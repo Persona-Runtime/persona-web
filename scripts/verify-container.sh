@@ -13,7 +13,30 @@ for tool in docker curl grep tar awk mktemp; do
   fi
 done
 
-image="${1:-persona-web:container-verify}"
+# 기본은 "빌드한 뒤 검사"다. --no-build는 이미 존재하는 이미지를 그대로 검사한다.
+# registry에서 digest로 pull한 이미지는 빌드 대상이 아니므로, 게시된 이미지를 검증하려면
+# 빌드 단계를 건너뛸 수 있어야 한다. 기본 동작은 그대로 두어 기존 호출 방식이 깨지지 않게 한다.
+build_image=true
+image=""
+for arg in "$@"; do
+  case "$arg" in
+    --no-build) build_image=false ;;
+    -*)
+      echo "알 수 없는 옵션: ${arg}" >&2
+      echo "사용법: $(basename "$0") [--no-build] [image]" >&2
+      exit 1
+      ;;
+    *)
+      if [[ -n "$image" ]]; then
+        echo "image는 하나만 지정합니다: ${image}, ${arg}" >&2
+        exit 1
+      fi
+      image="$arg"
+      ;;
+  esac
+done
+image="${image:-persona-web:container-verify}"
+
 requested_port="${PERSONA_WEB_VERIFY_PORT:-}"
 container="persona-web-verify-$$"
 export_container="${container}-image"
@@ -31,9 +54,20 @@ request() {
 
 echo "host architecture: $(uname -m)"
 echo "Docker server: $(docker version --format '{{.Server.Os}}/{{.Server.Arch}}')"
-echo "build target: linux/amd64"
+echo "image: ${image}"
 
-docker buildx build --platform linux/amd64 --load --tag "$image" .
+if [[ "$build_image" == true ]]; then
+  echo "mode: 빌드 후 검사 (build target linux/amd64)"
+  docker buildx build --platform linux/amd64 --load --tag "$image" .
+else
+  echo "mode: 기존 이미지 검사 (빌드하지 않음)"
+  # 이미지가 없으면 "검사할 것이 없다"가 아니라 실패다. pull이 빠진 상태를 통과로 남기지 않는다.
+  if ! docker image inspect "$image" > /dev/null 2>&1; then
+    echo "로컬에 이미지가 없습니다: ${image}" >&2
+    echo "먼저 pull 하세요: docker pull ${image}" >&2
+    exit 1
+  fi
+fi
 
 image_platform="$(docker image inspect "$image" --format '{{.Os}}/{{.Architecture}}')"
 image_user="$(docker image inspect "$image" --format '{{.Config.User}}')"
@@ -137,4 +171,9 @@ case "$bundle_rc" in
     ;;
 esac
 
-echo "container verification passed: ${image_platform}, user ${image_user}"
+if [[ "$build_image" == true ]]; then
+  verified_mode="빌드 후 검사"
+else
+  verified_mode="기존 이미지 검사"
+fi
+echo "container verification passed (${verified_mode}): ${image}, ${image_platform}, user ${image_user}"
