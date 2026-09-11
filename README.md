@@ -73,6 +73,9 @@ npm run container:verify
 검증 스크립트는 기본적으로 사용 가능한 loopback 포트를 자동 할당한다. 특정 포트를 써야 하면
 `PERSONA_WEB_VERIFY_PORT=18080 npm run container:verify`처럼 지정한다.
 
+커밋 `2ac8f09` 기준 실행 결과와 미검증 항목은 [검증 기록](docs/verification-2ac8f09.md)에 있다.
+소스와 연결되지 않는 옛 태그(`persona-web:review-9890e3d`)는 배포 후보가 아니다.
+
 스크립트는 호스트와 Docker 서버 아키텍처를 함께 출력한다. x86_64가 아닌 호스트에서는
 `linux/amd64` 실행이 에뮬레이션일 수 있으므로 그 결과를 검증 기록에 명시한다. 이 레포에서는
 이미지 push, Kubernetes manifest 변경, Argo CD Sync를 수행하지 않는다.
