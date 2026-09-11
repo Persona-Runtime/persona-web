@@ -40,6 +40,7 @@ npm run dev
 로컬 Python API 프록시는 `.env.example`을 참고해 `VITE_LOCAL_API_TARGET`에만 설정한다. 합성 개발 모드는 `VITE_API_MODE=mock`으로 명시적으로 선택하며 실제 API 오류를 mock 성공으로 바꾸지 않는다.
 
 검사 명령은 `npm run lint`, `npm run format:check`, `npm run typecheck`, `npm test`, `npm run build`이다.
+검증 스크립트의 금지 경로 규칙은 `npm run test:scripts`로 회귀 테스트한다.
 
 ## 운영 정적 이미지
 
@@ -73,7 +74,7 @@ npm run container:verify
 검증 스크립트는 기본적으로 사용 가능한 loopback 포트를 자동 할당한다. 특정 포트를 써야 하면
 `PERSONA_WEB_VERIFY_PORT=18080 npm run container:verify`처럼 지정한다.
 
-커밋 `2ac8f09` 기준 실행 결과와 미검증 항목은 [검증 기록](docs/verification-2ac8f09.md)에 있다.
+커밋 `95d7a55` 기준 실행 결과와 미검증 항목은 [검증 기록](docs/verification-95d7a55.md)에 있다.
 소스와 연결되지 않는 옛 태그(`persona-web:review-9890e3d`)는 배포 후보가 아니다.
 
 스크립트는 호스트와 Docker 서버 아키텍처를 함께 출력한다. x86_64가 아닌 호스트에서는
