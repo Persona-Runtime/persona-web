@@ -3,6 +3,16 @@ set -euo pipefail
 
 # 실제 배포 대상과 같은 이미지를 빌드하고 검사한다. x86_64가 아닌 호스트에서는 Docker
 # Desktop이 linux/amd64를 에뮬레이션할 수 있으므로, 인수인계 기록용으로 두 아키텍처를 출력한다.
+
+# 검사 도구가 없으면 `if <도구> ...` 형태의 금지 패턴 검사가 "매치 없음"으로 통과해 버린다.
+# 조용히 무력화되지 않도록 먼저 확인하고 멈춘다.
+for tool in docker curl grep tar awk; do
+  if ! command -v "$tool" > /dev/null 2>&1; then
+    echo "필요한 도구가 없습니다: ${tool}" >&2
+    exit 1
+  fi
+done
+
 image="${1:-persona-web:container-verify}"
 requested_port="${PERSONA_WEB_VERIFY_PORT:-}"
 container="persona-web-verify-$$"
@@ -34,7 +44,7 @@ image_user="$(docker image inspect "$image" --format '{{.Config.User}}')"
 docker create --platform linux/amd64 --name "$export_container" "$image" >/dev/null
 docker export "$export_container" > "$workdir/image.tar"
 tar -tf "$workdir/image.tar" > "$workdir/files.txt"
-if rg -n '(^|/)(\.env[^/]*|node_modules|src|package(-lock)?\.json)$' "$workdir/files.txt"; then
+if grep -nE '(^|/)(\.env[^/]*|node_modules|src|package(-lock)?\.json)$' "$workdir/files.txt"; then
   echo "runtime image contains a build input or local configuration" >&2
   exit 1
 fi
@@ -68,27 +78,27 @@ fi
 
 request --dump-header "$workdir/health.headers" \
   "${base_url}/healthz" > "$workdir/health.body"
-rg -qi '^cache-control:.*no-store' "$workdir/health.headers"
+grep -qiE '^cache-control:.*no-store' "$workdir/health.headers"
 [[ "$(<"$workdir/health.body")" == "ok" ]]
 
 request --dump-header "$workdir/index.headers" \
   "${base_url}/" > "$workdir/index.html"
-rg -qi '^cache-control:.*no-cache' "$workdir/index.headers"
+grep -qiE '^cache-control:.*no-cache' "$workdir/index.headers"
 
-rg -o '"/assets/[^"?]+' "$workdir/index.html" | tr -d '"' > "$workdir/assets.txt"
+grep -oE '"/assets/[^"?]+' "$workdir/index.html" | tr -d '"' > "$workdir/assets.txt"
 [[ -s "$workdir/assets.txt" ]]
 while IFS= read -r asset; do
   request --dump-header "$workdir/asset.headers" \
     "${base_url}${asset}" > /dev/null
-  rg -qi '^cache-control:.*immutable' "$workdir/asset.headers"
+  grep -qiE '^cache-control:.*immutable' "$workdir/asset.headers"
 done < "$workdir/assets.txt"
 
 missing_asset="${base_url}/assets/missing-deploy-asset.js"
 missing_asset_status="$(curl --silent --output /dev/null --dump-header "$workdir/missing-asset.headers" \
   --write-out '%{http_code}' "$missing_asset")"
 [[ "$missing_asset_status" == "404" ]]
-rg -qi '^cache-control:.*no-store' "$workdir/missing-asset.headers"
-if rg -qi '^cache-control:.*immutable' "$workdir/missing-asset.headers"; then
+grep -qiE '^cache-control:.*no-store' "$workdir/missing-asset.headers"
+if grep -qiE '^cache-control:.*immutable' "$workdir/missing-asset.headers"; then
   echo "누락 자산 응답에 immutable cache를 설정하면 안 됩니다." >&2
   exit 1
 fi
@@ -100,7 +110,7 @@ done
 
 [[ "$(docker exec "$container" id -u)" != "0" ]]
 docker cp "$container:/usr/share/nginx/html" "$workdir/site"
-if rg -n 'VITE_LOCAL_API_TARGET|127\.0\.0\.1:8000|PERSONA_STATIC_BEARER_TOKEN' "$workdir/site"; then
+if grep -rnE 'VITE_LOCAL_API_TARGET|127\.0\.0\.1:8000|PERSONA_STATIC_BEARER_TOKEN' "$workdir/site"; then
   echo "runtime bundle contains a local API setting or authentication secret name" >&2
   exit 1
 fi
