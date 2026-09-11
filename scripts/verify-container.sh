@@ -6,7 +6,7 @@ set -euo pipefail
 
 # 검사 도구가 없으면 `if <도구> ...` 형태의 금지 패턴 검사가 "매치 없음"으로 통과해 버린다.
 # 조용히 무력화되지 않도록 먼저 확인하고 멈춘다.
-for tool in docker curl grep tar awk; do
+for tool in docker curl grep tar awk mktemp; do
   if ! command -v "$tool" > /dev/null 2>&1; then
     echo "필요한 도구가 없습니다: ${tool}" >&2
     exit 1
@@ -41,13 +41,24 @@ image_user="$(docker image inspect "$image" --format '{{.Config.User}}')"
 [[ -n "$image_user" && "$image_user" != "0" && "$image_user" != "root" ]]
 
 # 최종 파일시스템에는 빌드 입력이나 머신별 설정이 남아 있으면 안 된다.
+# 검사 규칙은 회귀 테스트가 붙은 check-image-listing.sh가 소유한다. 0=금지 경로 발견,
+# 1=깨끗, 2=검사 자체 실패이며, 2를 "깨끗함"으로 넘기지 않는 것이 이 분기의 요점이다.
 docker create --platform linux/amd64 --name "$export_container" "$image" >/dev/null
 docker export "$export_container" > "$workdir/image.tar"
 tar -tf "$workdir/image.tar" > "$workdir/files.txt"
-if grep -nE '(^|/)(\.env[^/]*|node_modules|src|package(-lock)?\.json)$' "$workdir/files.txt"; then
-  echo "runtime image contains a build input or local configuration" >&2
-  exit 1
-fi
+listing_rc=0
+bash "$(dirname "$0")/check-image-listing.sh" "$workdir/files.txt" || listing_rc=$?
+case "$listing_rc" in
+  0)
+    echo "runtime image contains a build input or local configuration" >&2
+    exit 1
+    ;;
+  1) ;;
+  *)
+    echo "금지 경로 검사를 완료하지 못했습니다 (exit ${listing_rc})" >&2
+    exit 1
+    ;;
+esac
 
 publish_args=(--publish "127.0.0.1::8080")
 if [[ -n "$requested_port" ]]; then
@@ -110,9 +121,20 @@ done
 
 [[ "$(docker exec "$container" id -u)" != "0" ]]
 docker cp "$container:/usr/share/nginx/html" "$workdir/site"
-if grep -rnE 'VITE_LOCAL_API_TARGET|127\.0\.0\.1:8000|PERSONA_STATIC_BEARER_TOKEN' "$workdir/site"; then
-  echo "runtime bundle contains a local API setting or authentication secret name" >&2
-  exit 1
-fi
+# 금지 경로 검사와 같은 이유로 grep의 1(매치 없음)과 2 이상(검사 오류)을 구분한다.
+bundle_rc=0
+grep -rnE 'VITE_LOCAL_API_TARGET|127\.0\.0\.1:8000|PERSONA_STATIC_BEARER_TOKEN' \
+  "$workdir/site" || bundle_rc=$?
+case "$bundle_rc" in
+  0)
+    echo "runtime bundle contains a local API setting or authentication secret name" >&2
+    exit 1
+    ;;
+  1) ;;
+  *)
+    echo "번들 비밀값 검사를 완료하지 못했습니다 (grep exit ${bundle_rc})" >&2
+    exit 1
+    ;;
+esac
 
 echo "container verification passed: ${image_platform}, user ${image_user}"
