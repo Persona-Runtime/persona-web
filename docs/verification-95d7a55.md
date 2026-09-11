@@ -1,4 +1,4 @@
-# 컨테이너 검증 기록 — 2ac8f09
+# 컨테이너 검증 기록 — 95d7a55
 
 `scripts/verify-container.sh`로 실행한 결과다. 이 문서는 **로컬 검증까지의 기록**이며
 GHCR push와 Kubernetes 배포는 포함하지 않는다.
@@ -7,10 +7,10 @@ GHCR push와 Kubernetes 배포는 포함하지 않는다.
 
 | 항목        | 값                                                                        |
 | ----------- | ------------------------------------------------------------------------- |
-| 소스 커밋   | `2ac8f09` (`fix: 컨테이너 검증 스크립트의 ripgrep 의존 제거`)             |
+| 소스 커밋   | `95d7a55` (`fix: 이미지 금지 경로 검사를 디렉터리와 하위 파일까지 확장`)  |
 | 브랜치      | `feat/api-connect`                                                        |
-| 이미지 태그 | `persona-web:2ac8f09`                                                     |
-| 이미지 ID   | `sha256:939d0640c33cc02c03ca54f2d59c149e4e31c2b6395535a4945f69d832387ad2` |
+| 이미지 태그 | `persona-web:95d7a55`                                                     |
+| 이미지 ID   | `sha256:1e261efdcd04a57f3338bf9880524f237ad7205195bc2ae7c2b2634e42ff039e` |
 | 아키텍처    | `linux/amd64`                                                             |
 | 실행 사용자 | UID `101` (nginx-unprivileged)                                            |
 | 포트        | 8080                                                                      |
@@ -46,7 +46,7 @@ GHCR push와 Kubernetes 배포는 포함하지 않는다.
 | linux/amd64 빌드              | 통과                                                                               |
 | 비루트 실행                   | 통과 — 이미지 기본 사용자 101, 컨테이너 내 `id -u` ≠ 0                             |
 | read-only rootfs              | 통과 — `/tmp` tmpfs만으로 기동                                                     |
-| 런타임 이미지 내용            | 통과 — `.env*`·`node_modules`·`src`·`package*.json` 없음                           |
+| 런타임 이미지 내용            | 통과 — 2218개 경로에 `.env*`·`node_modules`·`src` 성분·`package*.json` 없음        |
 | `/healthz`                    | 통과 — 200, 본문 `ok`, `Cache-Control: no-store`                                   |
 | `/` HTML shell                | 통과 — 200, `no-cache` 재검증 정책                                                 |
 | `/assets/*` 실제 자산         | 통과 — 200, `immutable` 장기 cache                                                 |
@@ -56,15 +56,23 @@ GHCR push와 Kubernetes 배포는 포함하지 않는다.
 | 런타임 번들 내 로컬 설정·토큰 | 통과 — `VITE_LOCAL_API_TARGET`·`127.0.0.1:8000`·`PERSONA_STATIC_BEARER_TOKEN` 없음 |
 
 코드 검사: `npm run lint`, `npm run format:check`, `npm run typecheck`,
-`npm test`(10 passed), `npm run build` 모두 통과.
+`npm test`(10 passed), `npm run test:scripts`(25건), `npm run build` 모두 통과.
+
+**금지 경로 검사 규칙** — `scripts/check-image-listing.sh`가 소유하며 `--self-test`에 회귀 케이스가
+붙어 있다. 디렉터리는 `/` 또는 경로 끝을 경계로 성분 단위로 보고, `.env*`·`package*.json`은 파일
+이름으로 본다. `app/src/main.py`처럼 하위 파일까지 딸려 들어온 경우를 놓치지 않기 위함이다.
+`grep`의 1(매치 없음)과 2 이상(검사 오류)을 구분해, 검사가 깨진 상태가 "깨끗함"으로 통과하지
+않게 한다. 번들 비밀값 검사도 같은 방식으로 처리한다.
 
 ## 미검증 항목
 
 - 실제 linux/amd64 하드웨어 실행 (이번은 에뮬레이션)
 - 성능·지연 수치
 - GHCR registry digest — 아직 push하지 않았다. **위 이미지 ID를 registry digest로 쓰지 않는다.**
-  같은 소스를 다시 빌드해도 buildx provenance attestation 때문에 로컬 이미지 ID가 달라진다.
-  배포가 참조할 불변 식별자는 push 이후의 registry digest뿐이다.
+  로컬 이미지 ID도 content-addressed 식별자라 그 객체를 불변하게 가리킨다. 다만 같은 소스를
+  다시 빌드하면 buildx provenance attestation이 달라져 **다른 객체**가 만들어지고 새 ID가 생긴다.
+  기존 ID가 변하는 것이 아니라 소스와 ID가 1:1로 대응하지 않는 것이다. 그래서 배포 선언에는
+  **registry에서 pull 가능한 digest**를 쓴다.
 - 실제 Gateway API와 같은 origin에서 결합된 상태의 브라우저 시나리오
   (로컬 검증은 Vite 개발 서버 기준이며, Traefik `/v1` 라우팅은 platform 배포 후 확인)
 - Kubernetes probe·자원 설정
