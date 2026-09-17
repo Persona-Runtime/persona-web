@@ -25,3 +25,8 @@ dist/
 .vite/
 coverage/
 *.local
+
+# --- 로컬 전용 문서(원격에 올리지 않음) ---
+AGENTS.md
+docs/
+runbooks/
