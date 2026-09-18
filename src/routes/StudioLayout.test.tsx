@@ -8,7 +8,7 @@ import {
   renderApp,
 } from "../test/renderApp";
 
-test("아직 만들지 않은 기능을 누를 수 있는 요소로 배치하지 않는다", async () => {
+test("아직 만들지 않은 기능(삭제)을 누를 수 있는 요소로 배치하지 않는다", async () => {
   const { user } = renderApp({
     api: personaApi({
       listPersonas: vi
@@ -23,14 +23,19 @@ test("아직 만들지 않은 기능을 누를 수 있는 요소로 배치하지
   );
   await screen.findByRole("heading", { name: "합성 모루" });
 
-  // 자료 업로드·대화·삭제는 서버에도 화면에도 없다. 비활성 버튼으로도 두지 않는다.
-  const forbidden = /업로드|자료 입력하기|대화|채팅|삭제하기|편집/;
+  // 삭제는 여전히 서버에도 화면에도 없다. 비활성 버튼으로도 두지 않는다.
+  const forbidden = /삭제하기/;
   expect(screen.queryByRole("button", { name: forbidden })).toBeNull();
   expect(screen.queryByRole("link", { name: forbidden })).toBeNull();
-  // 대신 다음 단계는 문장으로 안내한다.
+
+  // 자료 편집·대화는 이제 실제 화면이라 진입점이 있어야 한다.
+  expect(screen.getByRole("link", { name: "자료 편집" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "대화" })).toBeInTheDocument();
+
+  // 다음 단계 안내도 그 흐름을 언급한다.
   expect(
     screen.getByText(
-      "다음 단계는 자료 입력입니다. 자료 업로드 화면은 아직 준비 중이라 지금은 이름만 관리할 수 있습니다.",
+      "다음 단계는 자료 입력입니다. 아래 자료 편집에서 붙여넣고 저장한 뒤 적용하세요(붙여넣기 → 적용 → 대화 순서).",
     ),
   ).toBeInTheDocument();
 });

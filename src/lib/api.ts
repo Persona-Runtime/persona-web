@@ -2,6 +2,8 @@ import {
   ApiError,
   type ApiErrorBody,
   type Draft,
+  type DraftApplyAccepted,
+  type DraftStatus,
   type Persona,
   type PersonaApi,
   type PersonaPage,
@@ -143,6 +145,27 @@ async function failureFor(response: Response): Promise<ApiError> {
 }
 
 /**
+ * 계약이 고정한 초안 상태 목록. PERSONA_STATUSES와 같은 이유로 Record를 쓴다 —
+ * DraftStatus에 값이 늘면 컴파일이 먼저 깨진다.
+ */
+const DRAFT_STATUSES: Record<DraftStatus, true> = {
+  editing: true,
+  processing: true,
+  ready: true,
+  failed: true,
+};
+
+function isDraftStatus(value: unknown): value is DraftStatus {
+  return typeof value === "string" && Object.hasOwn(DRAFT_STATUSES, value);
+}
+
+function isDraftWarning(value: unknown): boolean {
+  const record = asRecord(value);
+  if (record === null) return false;
+  return isString(record.code) && isNullableString(record.source_id);
+}
+
+/**
  * 초안 응답인지 확인한다.
  *
  * 형식 검증을 건너뛰면 /v1 라우팅이 어긋났을 때 정적 index.html이 200으로 돌아와도
@@ -155,7 +178,7 @@ function isDraft(value: unknown): value is Draft {
   return (
     isString(record.version_id) &&
     typeof record.revision === "number" &&
-    isString(record.status) &&
+    isDraftStatus(record.status) &&
     isNullableString(record.job_id) &&
     typeof record.requires_processing === "boolean" &&
     isString(record.persona_id) &&
@@ -165,9 +188,18 @@ function isDraft(value: unknown): value is Draft {
     isString(settings.profile) &&
     isString(settings.speech_examples) &&
     Array.isArray(record.sources) &&
+    Array.isArray(record.warnings) &&
+    record.warnings.every(isDraftWarning) &&
     typeof record.can_activate === "boolean" &&
     isString(record.updated_at)
   );
+}
+
+/** POST draft/apply의 202 응답. status는 이 시점에 늘 "processing" 하나뿐이다. */
+function isDraftApplyAccepted(value: unknown): value is DraftApplyAccepted {
+  const record = asRecord(value);
+  if (record === null) return false;
+  return isString(record.version_id) && record.status === "processing";
 }
 
 /**
@@ -261,6 +293,17 @@ export const httpPersonaApi: PersonaApi = {
         "Idempotency-Key": idempotencyKey,
       },
       body: JSON.stringify(patch),
+    }),
+
+  applyDraft: (token, personaId, expectedRevision, idempotencyKey, signal) =>
+    request(`${draftPath(personaId)}/apply`, token, isDraftApplyAccepted, {
+      method: "POST",
+      signal,
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+      },
+      body: JSON.stringify({ expected_revision: expectedRevision }),
     }),
 
   discardDraft: (token, personaId, idempotencyKey, signal) =>

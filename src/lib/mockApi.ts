@@ -27,6 +27,7 @@ function mockDraft(personaId: string, settings: DraftSettings): Draft {
     base_version_id: null,
     settings,
     sources: [],
+    warnings: [],
     can_activate: false,
     updated_at: new Date().toISOString(),
   };
@@ -40,6 +41,18 @@ function delay(signal?: AbortSignal): Promise<void> {
       reject(new DOMException("요청이 취소되었습니다.", "AbortError"));
     });
   });
+}
+
+/** 적용 처리 접수 뒤 processing → ready/failed로 바뀌기까지 흉내 내는 지연(ms). */
+const APPLY_DELAY_MS = 2000;
+
+/**
+ * 테스트에서 적용 실패 경로를 재현하기 위한 스위치. 기본은 성공(ready)이고,
+ * 켜면 다음 적용이 failed로 끝난다. 테스트는 각 케이스 뒤 반드시 false로 되돌린다.
+ */
+export let PERSONA_MOCK_APPLY_FAIL = false;
+export function setMockApplyFail(fail: boolean): void {
+  PERSONA_MOCK_APPLY_FAIL = fail;
 }
 
 export const mockPersonaApi: PersonaApi = {
@@ -100,14 +113,102 @@ export const mockPersonaApi: PersonaApi = {
     if (draft.revision !== patch.expected_revision) {
       throw new ApiError(409, "revision_conflict");
     }
+
+    let sources = draft.sources;
+    const removeIds = new Set(patch.remove_source_ids ?? []);
+    if (removeIds.size > 0) {
+      sources = sources.filter((source) => !removeIds.has(source.id));
+    }
+    for (const upsert of patch.upsert_sources ?? []) {
+      // 실 서버는 sha256을 실제로 계산하지만, 이 화면은 그 값을 읽지 않으므로
+      // 형식만 맞춘 자리표시자를 쓴다(진짜 해시가 아님).
+      const byteSize = new TextEncoder().encode(upsert.content).length;
+      const existingIndex =
+        upsert.id === undefined
+          ? -1
+          : sources.findIndex((source) => source.id === upsert.id);
+      if (existingIndex >= 0) {
+        sources = sources.map((source, index) =>
+          index === existingIndex
+            ? {
+                ...source,
+                kind: upsert.kind,
+                filename: upsert.filename ?? null,
+                content: upsert.content,
+                byte_size: byteSize,
+              }
+            : source,
+        );
+      } else {
+        sources = [
+          ...sources,
+          {
+            id: upsert.id ?? crypto.randomUUID(),
+            kind: upsert.kind,
+            filename: upsert.filename ?? null,
+            content: upsert.content,
+            byte_size: byteSize,
+            sha256: "0".repeat(64),
+          },
+        ];
+      }
+    }
+
     const next: Draft = {
       ...draft,
       revision: draft.revision + 1,
       settings: { ...draft.settings, ...(patch.settings ?? {}) },
+      sources,
       updated_at: new Date().toISOString(),
     };
     mockDrafts.set(personaId, next);
     return next;
+  },
+
+  async applyDraft(
+    token,
+    personaId,
+    expectedRevision,
+    _idempotencyKey,
+    signal,
+  ) {
+    await delay(signal);
+    if (!token.trim()) throw new ApiError(401, "unauthorized");
+    const draft = mockDrafts.get(personaId);
+    if (draft === undefined) throw new ApiError(404, "draft_not_found");
+    // 진행 중 여부를 revision보다 먼저 본다 — 실 서버가 advisory lock을 revision 검사보다
+    // 먼저 시도하는 순서를 흉내 낸다.
+    if (draft.status === "processing") {
+      throw new ApiError(409, "indexing_in_progress");
+    }
+    if (draft.revision !== expectedRevision) {
+      throw new ApiError(409, "revision_mismatch");
+    }
+    if (draft.sources.length === 0) {
+      throw new ApiError(422, "no_content");
+    }
+
+    const processing: Draft = {
+      ...draft,
+      status: "processing",
+      job_id: crypto.randomUUID(),
+      updated_at: new Date().toISOString(),
+    };
+    mockDrafts.set(personaId, processing);
+
+    // 실제 백엔드처럼 접수 뒤 백그라운드에서 상태가 바뀐다. 상태 화면의 폴링이 이 전이를
+    // 보도록 타이머로 흉내 낸다 — 테스트는 fake timer로 이 지연을 제어한다.
+    window.setTimeout(() => {
+      const current = mockDrafts.get(personaId);
+      if (current === undefined || current.status !== "processing") return;
+      mockDrafts.set(personaId, {
+        ...current,
+        status: PERSONA_MOCK_APPLY_FAIL ? "failed" : "ready",
+        updated_at: new Date().toISOString(),
+      });
+    }, APPLY_DELAY_MS);
+
+    return { version_id: processing.version_id, status: "processing" };
   },
 
   async discardDraft(token, personaId, _idempotencyKey, signal) {

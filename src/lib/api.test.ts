@@ -267,3 +267,108 @@ test("취소 신호를 그대로 전달한다", async () => {
  * requestBlob — 이미지처럼 JSON이 아닌 응답을 받는 경로.
  * 아직 화면에서 쓰지 않지만, 오류 계약이 request()와 어긋나지 않게 먼저 고정해 둔다.
  */
+
+/*
+ * applyDraft — POST draft/apply. 202 접수, 그리고 계약이 정한 세 가지 실패
+ * (revision_mismatch·indexing_in_progress·no_content)를 코드 문자열까지 확인한다.
+ * 이 세 코드는 PATCH의 revision_conflict와 다른 문자열이라 여기서 섞이면 바로 드러난다.
+ */
+
+test("apply의 202 접수를 성공으로 받는다", async () => {
+  stubFetch(
+    respond(
+      JSON.stringify({
+        version_id: "00000000-0000-4000-8000-000000000002",
+        status: "processing",
+      }),
+      202,
+    ),
+  );
+
+  await expect(
+    httpPersonaApi.applyDraft(TOKEN, "persona-1", 3, "key-apply-1"),
+  ).resolves.toMatchObject({
+    version_id: "00000000-0000-4000-8000-000000000002",
+    status: "processing",
+  });
+});
+
+test("revision이 어긋나면 409 revision_mismatch를 그대로 전달한다", async () => {
+  stubFetch(
+    respond(
+      JSON.stringify({
+        error: {
+          code: "revision_mismatch",
+          message: "...",
+          request_id: "00000000-0000-4000-8000-000000000010",
+        },
+      }),
+      409,
+    ),
+  );
+
+  await expect(
+    httpPersonaApi.applyDraft(TOKEN, "persona-1", 1, "key-apply-2"),
+  ).rejects.toMatchObject({ status: 409, code: "revision_mismatch" });
+});
+
+test("이미 처리 중이면 409 indexing_in_progress를 그대로 전달한다", async () => {
+  stubFetch(
+    respond(
+      JSON.stringify({
+        error: {
+          code: "indexing_in_progress",
+          message: "...",
+          request_id: "00000000-0000-4000-8000-000000000011",
+        },
+      }),
+      409,
+    ),
+  );
+
+  await expect(
+    httpPersonaApi.applyDraft(TOKEN, "persona-1", 3, "key-apply-3"),
+  ).rejects.toMatchObject({ status: 409, code: "indexing_in_progress" });
+});
+
+test("색인할 자료가 없으면 422 no_content를 그대로 전달한다", async () => {
+  stubFetch(
+    respond(
+      JSON.stringify({
+        error: {
+          code: "no_content",
+          message: "...",
+          request_id: "00000000-0000-4000-8000-000000000012",
+        },
+      }),
+      422,
+    ),
+  );
+
+  await expect(
+    httpPersonaApi.applyDraft(TOKEN, "persona-1", 3, "key-apply-4"),
+  ).rejects.toMatchObject({ status: 422, code: "no_content" });
+});
+
+test("apply 요청은 경로·Idempotency-Key·expected_revision을 함께 보낸다", async () => {
+  const fetchMock = stubFetch(
+    respond(
+      JSON.stringify({
+        version_id: "00000000-0000-4000-8000-000000000002",
+        status: "processing",
+      }),
+      202,
+    ),
+  );
+
+  await httpPersonaApi.applyDraft(TOKEN, "persona-1", 5, "key-apply-5");
+
+  const [path, init] = fetchMock.mock.calls[0];
+  expect(path).toBe("/v1/personas/persona-1/draft/apply");
+  expect(init.method).toBe("POST");
+  expect(init.body).toBe(JSON.stringify({ expected_revision: 5 }));
+  expect(init.headers).toMatchObject({
+    Authorization: `Bearer ${TOKEN}`,
+    "Idempotency-Key": "key-apply-5",
+  });
+});

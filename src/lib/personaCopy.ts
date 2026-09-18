@@ -1,4 +1,4 @@
-import { ApiError, type Persona } from "./types";
+import { ApiError, type DraftStatus, type Persona } from "./types";
 
 /**
  * 사용자에게 보여줄 한국어 문구를 한곳에 모은다.
@@ -26,6 +26,25 @@ export function messageFor(error: unknown): string {
       return "이전 생성 요청과 내용이 달라 요청을 처리할 수 없습니다. 이름을 확인해주세요.";
     case "dependency_unavailable":
       return "서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요.";
+    // 초안 저장·적용 관련 오류. revision_conflict(PATCH)는 이 함수로 안내하지 않는다 —
+    // 화면이 "다른 곳에서 수정됨" 배너로 따로 보여주고 입력 내용을 지우지 않아야 하므로,
+    // 일반 오류 문구가 아니라 별도 분기가 필요하다.
+    case "settings_too_large":
+      return "profile은 1,500자를 넘을 수 없습니다. 내용을 줄여주세요.";
+    case "source_too_large":
+      return "자료 하나의 크기가 너무 큽니다(파일당 1 MiB). 내용을 나눠 저장해주세요.";
+    case "storage_quota_exceeded":
+      return "전체 자료 크기가 너무 큽니다(총 5 MiB). 내용을 줄여주세요.";
+    case "empty_patch":
+      return "저장할 변경 내용이 없습니다.";
+    case "revision_mismatch":
+      return "저장하지 않은 변경이 있습니다. 먼저 저장한 뒤 다시 적용해주세요.";
+    case "indexing_in_progress":
+      return "이미 처리 중입니다. 완료된 뒤 다시 시도해주세요.";
+    case "no_content":
+      return "적용할 자료가 없습니다. 본문이나 대사를 먼저 입력해주세요.";
+    case "draft_not_found":
+      return "초안을 찾을 수 없습니다. 화면을 새로고침해주세요.";
     case "invalid_response":
       // 라우팅·배포 설정 문제라 재시도로는 풀리지 않는다. "잠시 후 다시"를 권하지
       // 않는다. 이 오류에는 요청 ID도 없으므로 요청 ID를 묻지도 않는다.
@@ -65,13 +84,13 @@ export function statusLabel(status: Persona["status"]): string {
 export function nextStepFor(status: Persona["status"]): string {
   const guides: Record<Persona["status"], string> = {
     needs_material:
-      "다음 단계는 자료 입력입니다. 자료 업로드 화면은 아직 준비 중이라 지금은 이름만 관리할 수 있습니다.",
+      "다음 단계는 자료 입력입니다. 아래 자료 편집에서 붙여넣고 저장한 뒤 적용하세요(붙여넣기 → 적용 → 대화 순서).",
     preparing:
       "입력한 자료를 처리하고 있습니다. 처리가 끝나면 검토할 내용을 보여드립니다.",
     review_required:
-      "처리 결과를 검토한 뒤 적용하면 대화에 사용할 수 있습니다. 검토 화면은 아직 준비 중입니다.",
+      "처리 결과를 검토한 뒤 적용하면 대화에 사용할 수 있습니다. 아래 자료 편집에서 확인하세요.",
     ready:
-      "자료가 적용된 캐릭터입니다. 대화 화면은 아직 준비 중이라 지금은 상태만 확인할 수 있습니다.",
+      "자료가 적용된 캐릭터입니다. 아래 대화에서 대화를 시작할 수 있습니다(실제 응답은 GPU 연결 후).",
     deleting:
       "삭제를 처리하고 있습니다. 서버에서 삭제가 끝나야 새 캐릭터를 만들 수 있습니다.",
   };
@@ -91,4 +110,25 @@ export function formatCreatedAt(createdAt: string): string {
   return new Intl.DateTimeFormat("ko-KR", {
     dateStyle: "medium",
   }).format(parsed);
+}
+
+export function draftStatusLabel(status: DraftStatus): string {
+  const labels: Record<DraftStatus, string> = {
+    editing: "편집 중",
+    processing: "처리 중",
+    ready: "적용됨",
+    failed: "처리 실패",
+  };
+  return labels[status];
+}
+
+/**
+ * 실패 상태를 일반 문구로만 안내한다.
+ *
+ * 계약상 error_code(no_content 등)는 openapi.json의 Draft 응답에 없다 — DB 컬럼으로는
+ * 있지만 API가 돌려주지 않는다(백엔드 갭, 완료 보고에 남김). 그래서 "왜" 실패했는지는
+ * 보여줄 수 없고 "실패했다"는 사실과 다시 시도할 수 있다는 안내만 할 수 있다.
+ */
+export function draftFailedMessage(): string {
+  return "자료 처리에 실패했습니다. 자료를 확인한 뒤 다시 적용해주세요.";
 }

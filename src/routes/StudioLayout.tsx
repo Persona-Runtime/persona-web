@@ -27,7 +27,9 @@ export function StudioLayout({ api }: { api: PersonaApi }) {
 
   // "/personas/new"도 ":personaId" 규칙에 걸리므로 먼저 구분한다.
   const creatingMatch = useMatch("/personas/new");
-  const detailMatch = useMatch("/personas/:personaId");
+  // 와일드카드로 개요·자료 편집·대화(:personaId, :personaId/draft, :personaId/chat)를
+  // 전부 "상세 보기 중"으로 취급한다 — 셋 다 같은 캐릭터를 다루는 작업 영역이다.
+  const detailMatch = useMatch("/personas/:personaId/*");
   const selectedId =
     creatingMatch !== null ? null : (detailMatch?.params.personaId ?? null);
   const showsWorkspace = creatingMatch !== null || detailMatch !== null;
@@ -44,6 +46,7 @@ export function StudioLayout({ api }: { api: PersonaApi }) {
       : "캐릭터는 최대 3개까지 만들 수 있습니다.";
 
   const studio: StudioContextValue = {
+    api,
     list,
     create,
     personas,

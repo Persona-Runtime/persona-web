@@ -62,18 +62,37 @@ export interface DraftSource {
   sha256: string;
 }
 
+/** 계약이 고정한 초안 상태. 새 상태가 늘면 UI 분기도 함께 늘려야 하므로 리터럴로 좁힌다. */
+export type DraftStatus = "editing" | "processing" | "ready" | "failed";
+
+/**
+ * 소스 하나를 색인에서 뺐다는 신호. openapi.json에는 있지만 지금 화면은 아직 쓰지 않는다
+ * (거부한 이유를 보여줄 자리가 없다 — 있다는 사실만 타입으로 남겨 둔다).
+ */
+export interface DraftWarning {
+  code: string;
+  source_id: string | null;
+}
+
 export interface Draft {
   version_id: string;
   revision: number;
-  status: string;
+  status: DraftStatus;
   job_id: string | null;
   requires_processing: boolean;
   persona_id: string;
   base_version_id: string | null;
   settings: DraftSettings;
   sources: DraftSource[];
+  warnings: DraftWarning[];
   can_activate: boolean;
   updated_at: string;
+}
+
+/** POST draft/apply의 202 응답. status는 accepted 시점에 늘 processing이다. */
+export interface DraftApplyAccepted {
+  version_id: string;
+  status: "processing";
 }
 
 /** PATCH가 보내는 변경. expected_revision이 CAS 기준이다. */
@@ -117,6 +136,18 @@ export interface PersonaApi {
     idempotencyKey: string,
     signal?: AbortSignal,
   ): Promise<Draft>;
+  /**
+   * expected_revision이 지금 초안과 다르면 409 revision_mismatch, 이미 진행 중이면
+   * 409 indexing_in_progress, 색인할 자료가 없으면 422 no_content.
+   * PATCH의 409 revision_conflict와 코드 문자열이 다르다 — 계약상 의도적 구분이다.
+   */
+  applyDraft(
+    token: string,
+    personaId: string,
+    expectedRevision: number,
+    idempotencyKey: string,
+    signal?: AbortSignal,
+  ): Promise<DraftApplyAccepted>;
   discardDraft(
     token: string,
     personaId: string,
