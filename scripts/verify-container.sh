@@ -153,6 +153,16 @@ for path in /missing-static-file /v1 /v1/me; do
     "${base_url}${path}")" == "404" ]]
 done
 
+# 클라이언트 라우트는 앱 셸을 받아야 새로고침과 딥링크가 동작한다. 위의 404 검사와
+# 함께 두어, fallback 범위가 앱 라우트 밖으로 넓어지면 바로 드러나게 한다.
+for path in /personas /personas/00000000-0000-4000-8000-000000000001; do
+  request --dump-header "$workdir/route.headers" \
+    "${base_url}${path}" > "$workdir/route.html"
+  grep -qiE '^content-type:.*text/html' "$workdir/route.headers"
+  grep -qiE '^cache-control:.*no-cache' "$workdir/route.headers"
+  grep -q 'id="root"' "$workdir/route.html"
+done
+
 [[ "$(docker exec "$container" id -u)" != "0" ]]
 docker cp "$container:/usr/share/nginx/html" "$workdir/site"
 # 금지 경로 검사와 같은 이유로 grep의 1(매치 없음)과 2 이상(검사 오류)을 구분한다.

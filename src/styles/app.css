@@ -1,119 +1,525 @@
+@import "./tokens.css";
+
+/* ---------- 기본 ---------- */
+
 :root {
   font-family: system-ui, sans-serif;
-  color: #1e293b;
-  background: #f8fafc;
+  color: var(--text);
+  background: var(--bg);
 }
+
 * {
   box-sizing: border-box;
 }
+
 body {
   margin: 0;
 }
+
 button,
 input {
   font: inherit;
 }
-button {
+
+/*
+ * 포커스 표시는 어디서도 지우지 않는다. 키보드 사용자가 지금 어디에 있는지
+ * 알 수 없게 되는 것이 시각적 깔끔함보다 큰 손해다.
+ */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: var(--focus-ring);
+}
+
+/* 화면에서는 보이지 않지만 스크린리더는 읽어야 하는 문구. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------- 버튼과 링크 ---------- */
+
+button,
+.button {
+  display: inline-block;
   border: 0;
-  border-radius: 0.5rem;
-  background: #2563eb;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
   color: white;
   cursor: pointer;
   padding: 0.7rem 1rem;
+  text-decoration: none;
+  font-weight: 600;
+  white-space: nowrap;
 }
+
+button:hover,
+.button:hover {
+  background: var(--accent-strong);
+}
+
 button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+  background: var(--accent);
 }
+
+.secondary {
+  background: var(--text-muted);
+}
+
+.secondary:hover {
+  background: var(--text);
+}
+
+.text-button {
+  background: transparent;
+  color: var(--accent);
+  padding: 0;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.text-button:hover {
+  background: transparent;
+  text-decoration: underline;
+}
+
 input {
   border: 1px solid #94a3b8;
-  border-radius: 0.5rem;
+  border-radius: var(--radius-sm);
   padding: 0.7rem;
   width: 100%;
 }
+
 label {
   font-weight: 700;
 }
+
 form {
   display: grid;
-  gap: 0.75rem;
+  gap: var(--space-3);
 }
+
+/* ---------- 공통 틀 ---------- */
+
 .shell {
   margin: 0 auto;
-  max-width: 48rem;
-  padding: 2rem 1rem;
+  max-width: 72rem;
+  padding: var(--space-5) var(--space-4);
 }
+
+.shell--entry {
+  display: grid;
+  gap: var(--space-5);
+  max-width: 44rem;
+  align-content: start;
+}
+
 .panel {
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 0.9rem;
-  padding: 1.5rem;
-  box-shadow: 0 1px 3px rgb(15 23 42 / 8%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-card);
 }
-.narrow {
-  max-width: 30rem;
-  margin: 4rem auto;
-}
-.topbar,
-.section-heading,
-.persona-list li {
-  align-items: center;
+
+.topbar {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
 }
-.section-heading {
-  align-items: flex-start;
-}
+
 .eyebrow {
-  color: #475569;
+  color: var(--text-muted);
   font-size: 0.85rem;
   letter-spacing: 0.08em;
-  margin: 0 0 0.25rem;
+  margin: 0 0 var(--space-1);
   text-transform: uppercase;
 }
-.secondary {
-  background: #475569;
+
+/* ---------- 접속 화면 ---------- */
+
+.intro h1 {
+  margin: 0 0 var(--space-3);
+  font-size: 1.5rem;
+  line-height: 1.35;
 }
-.text-button {
-  background: transparent;
-  color: #1d4ed8;
-  padding: 0;
+
+.intro__lead {
+  color: var(--text-muted);
+  margin: 0 0 var(--space-4);
 }
-.persona-list {
+
+.intro__status {
   display: grid;
-  gap: 0.75rem;
-  list-style: none;
-  padding: 0;
+  gap: var(--space-1);
+  margin: 0;
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
 }
-.persona-list li {
-  border: 1px solid #e2e8f0;
-  border-radius: 0.5rem;
-  padding: 0.9rem;
-}
-.persona-list span {
-  color: #475569;
+
+.intro__status dt {
+  font-weight: 700;
   font-size: 0.9rem;
 }
+
+.intro__status dd {
+  margin: 0 0 var(--space-2);
+  color: var(--text-muted);
+}
+
+.hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+/* ---------- 스튜디오 레이아웃 ---------- */
+
+/*
+ * 좁은 화면이 기본이다. 48rem부터 목록과 작업 영역을 나란히 둔다.
+ * 그보다 좁을 때는 둘 중 하나만 보여 "목록 → 상세"로 이동하게 한다.
+ * 어느 쪽을 보일지는 StudioLayout이 현재 주소로 계산해 data-pane에 넣는다.
+ */
+.studio {
+  display: grid;
+  gap: var(--space-5);
+  align-items: start;
+}
+
+@media (min-width: 48rem) {
+  .studio {
+    grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 47.99rem) {
+  .studio[data-pane="list"] .studio__workspace {
+    display: none;
+  }
+
+  .studio[data-pane="detail"] .studio__list {
+    display: none;
+  }
+}
+
+.studio__list,
+.studio__workspace {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-card);
+}
+
+.studio__list h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.quota {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+/* 데스크톱에서는 목록이 늘 보이므로 돌아갈 링크가 필요 없다. */
+.back-link {
+  display: inline-block;
+  margin-bottom: var(--space-4);
+}
+
+@media (min-width: 48rem) {
+  .back-link {
+    display: none;
+  }
+}
+
+.workspace__heading {
+  margin: 0 0 var(--space-3);
+  font-size: 1.4rem;
+}
+
+.workspace__identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.workspace__identity .workspace__heading {
+  margin: 0;
+}
+
+.guide {
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin: 0 0 var(--space-3);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-2) var(--space-4);
+  align-items: center;
+  margin: 0 0 var(--space-4);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+}
+
+.facts dt {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.facts dd {
+  margin: 0;
+}
+
+/* ---------- 캐릭터 카드와 목록 ---------- */
+
+.persona-list {
+  display: grid;
+  gap: var(--space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.persona-link {
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  text-decoration: none;
+  color: inherit;
+  background: var(--surface);
+}
+
+.persona-link:hover {
+  border-color: var(--accent);
+}
+
+.persona-link[aria-current="page"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.persona-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.persona-card__body {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.persona-card__name {
+  overflow-wrap: anywhere;
+}
+
+.persona-card__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.persona-card__date {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  font-weight: 700;
+  background: var(--surface-muted);
+  color: var(--text);
+}
+
+.avatar[data-accent="0"] {
+  background: var(--accent-0-bg);
+  color: var(--accent-0-fg);
+}
+.avatar[data-accent="1"] {
+  background: var(--accent-1-bg);
+  color: var(--accent-1-fg);
+}
+.avatar[data-accent="2"] {
+  background: var(--accent-2-bg);
+  color: var(--accent-2-fg);
+}
+.avatar[data-accent="3"] {
+  background: var(--accent-3-bg);
+  color: var(--accent-3-fg);
+}
+.avatar[data-accent="4"] {
+  background: var(--accent-4-bg);
+  color: var(--accent-4-fg);
+}
+.avatar[data-accent="5"] {
+  background: var(--accent-5-bg);
+  color: var(--accent-5-fg);
+}
+
+.badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: var(--surface-muted);
+  color: var(--text-muted);
+}
+
+.badge[data-status="ready"] {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.badge[data-status="review_required"],
+.badge[data-status="preparing"] {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.badge[data-status="deleting"] {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* ---------- 생성 미리보기 ---------- */
+
+.preview {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+  background: var(--surface-muted);
+}
+
+.preview__placeholder {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+/* ---------- 상태 안내 ---------- */
+
 .error,
 .notice,
 .success {
-  border-radius: 0.5rem;
-  padding: 0.75rem;
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
 }
-.error {
-  background: #fef2f2;
-  color: #991b1b;
-}
-.notice {
-  background: #fffbeb;
-  color: #92400e;
-}
+
+.error p,
+.notice,
 .success {
-  background: #f0fdf4;
-  color: #166534;
+  margin: 0;
 }
+
+.error {
+  background: var(--danger-soft);
+  color: var(--danger);
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+}
+
+.notice {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.success {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
 .empty {
-  color: #475569;
-  padding: 1rem 0;
+  color: var(--text-muted);
+  padding: var(--space-4) 0;
+}
+
+/* ---------- 로딩 자리표시자 ---------- */
+
+.persona-skeletons {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.skeleton {
+  display: block;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    90deg,
+    var(--surface-muted) 25%,
+    #e8ebf0 37%,
+    var(--surface-muted) 63%
+  );
+  background-size: 400% 100%;
+  animation: skeleton-sweep 1.4s ease-in-out infinite;
+}
+
+.skeleton--avatar {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.skeleton--line {
+  width: 100%;
+  min-width: 8rem;
+  height: 0.8rem;
+}
+
+.skeleton--short {
+  width: 60%;
+  min-width: 4rem;
+}
+
+@keyframes skeleton-sweep {
+  from {
+    background-position: 100% 50%;
+  }
+  to {
+    background-position: 0 50%;
+  }
+}
+
+/* 움직임을 줄이도록 설정한 사용자에게는 반짝임을 멈춘다. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
 }
