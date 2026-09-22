@@ -38,11 +38,11 @@ export function messageFor(error: unknown): string {
     case "empty_patch":
       return "저장할 변경 내용이 없습니다.";
     case "revision_mismatch":
-      return "저장하지 않은 변경이 있습니다. 먼저 저장한 뒤 다시 적용해주세요.";
+      return "저장하지 않은 변경이 있습니다. 먼저 저장한 뒤 다시 색인해주세요.";
     case "indexing_in_progress":
       return "이미 처리 중입니다. 완료된 뒤 다시 시도해주세요.";
     case "no_content":
-      return "적용할 자료가 없습니다. 본문이나 대사를 먼저 입력해주세요.";
+      return "색인할 자료가 없습니다. 본문이나 대사를 먼저 입력해주세요.";
     case "draft_not_found":
       return "초안을 찾을 수 없습니다. 화면을 새로고침해주세요.";
     case "invalid_response":
@@ -116,7 +116,7 @@ export function draftStatusLabel(status: DraftStatus): string {
   const labels: Record<DraftStatus, string> = {
     editing: "편집 중",
     processing: "처리 중",
-    ready: "적용됨",
+    ready: "색인됨",
     failed: "처리 실패",
   };
   return labels[status];
@@ -136,5 +136,5 @@ export function draftFailedMessage(errorCode: string | null): string {
     return DRAFT_FAILURE_MESSAGES[errorCode];
   }
   const suffix = errorCode === null ? "" : ` (코드: ${errorCode})`;
-  return `자료 처리에 실패했습니다. 자료를 확인한 뒤 다시 적용해주세요.${suffix}`;
+  return `자료 처리에 실패했습니다. 자료를 확인한 뒤 다시 색인해주세요.${suffix}`;
 }

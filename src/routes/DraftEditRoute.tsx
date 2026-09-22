@@ -148,9 +148,15 @@ function DraftEditForm({
     ]);
   };
 
-  // can_activate는 서버 판정값이다 — 로컬에서 status만 보고 다시 계산하면 서버가
-  // 아직 허용하지 않는 적용을 화면이 먼저 열어줄 수 있다(계약: 지금은 항상 false).
-  const canApply = draft.can_activate && draftState.applyState !== "loading";
+  // 이 버튼은 색인(POST draft/apply)이다 — 활성화(POST draft/activate, 색인 결과를
+  // 적용본으로 만들기)가 아니다. can_activate는 활성화 판정값이라 여기 쓰면 안 된다
+  // (지금 늘 false라 그러면 색인 자체가 영원히 막힌다). 자료 1개 이상 조건은
+  // 422 no_content를 미리 걸러 불필요한 요청을 줄이려는 것이다.
+  const hasSource = draft.sources.length > 0;
+  const canApply =
+    draft.status !== "processing" &&
+    hasSource &&
+    draftState.applyState !== "loading";
 
   return (
     <>
@@ -173,6 +179,12 @@ function DraftEditForm({
               }`}
         </p>
       </div>
+
+      {draft.can_activate && (
+        // 활성화(캐릭터의 적용본으로 만들기) 버튼은 이 화면에 아직 없다 — 색인
+        // 버튼과 혼동하지 않도록 지금은 판정값을 안내 문구로만 보여준다.
+        <p className="guide">이 색인 결과는 적용본으로 활성화할 수 있습니다.</p>
+      )}
 
       {draft.status === "failed" && (
         <p className="notice">{draftFailedMessage(draft.error_code)}</p>
@@ -279,8 +291,8 @@ function DraftEditForm({
       )}
       <button type="button" onClick={draftState.apply} disabled={!canApply}>
         {draftState.applyState === "loading" || draft.status === "processing"
-          ? "적용 중…"
-          : "적용"}
+          ? "색인 중…"
+          : "색인"}
       </button>
     </>
   );
