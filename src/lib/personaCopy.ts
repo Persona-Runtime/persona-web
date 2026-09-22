@@ -45,6 +45,22 @@ export function messageFor(error: unknown): string {
       return "적용할 자료가 없습니다. 본문이나 대사를 먼저 입력해주세요.";
     case "draft_not_found":
       return "초안을 찾을 수 없습니다. 화면을 새로고침해주세요.";
+    case "not_indexed":
+      return "아직 색인된 자료가 없습니다. 자료를 적용한 뒤 다시 시도해주세요.";
+    case "schema_not_ready":
+      return "아직 이 기능을 쓸 수 없습니다. 잠시 후 다시 시도해주세요.";
+    case "conversation_not_found":
+      return "대화를 찾을 수 없습니다. 화면을 새로고침해주세요.";
+    case "generation_not_found":
+      return "생성 기록을 찾을 수 없습니다.";
+    case "generation_in_progress":
+      return "이미 진행 중인 응답이 있습니다. 완료된 뒤 다시 시도해주세요.";
+    case "retry_not_latest":
+      return "이 시도는 대화의 최신 질문이 아니라 다시 시도할 수 없습니다.";
+    case "retry_input_unavailable":
+      return "재사용할 입력이 없어 다시 시도할 수 없습니다.";
+    case "invalid_message":
+      return "질문 내용을 확인해주세요(1~2,000자).";
     case "invalid_response":
       // 라우팅·배포 설정 문제라 재시도로는 풀리지 않는다. "잠시 후 다시"를 권하지
       // 않는다. 이 오류에는 요청 ID도 없으므로 요청 ID를 묻지도 않는다.

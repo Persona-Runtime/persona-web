@@ -1,14 +1,30 @@
 import {
   ApiError,
   type ApiErrorBody,
+  type ChatCompletionResult,
+  type ChatEvent,
+  type Citation,
+  type Conversation,
+  type ConversationPage,
   type Draft,
   type DraftApplyAccepted,
   type DraftStatus,
+  type Generation,
+  type GenerationMode,
+  type GenerationStatus,
+  type MessagePage,
+  type MessageTurn,
   type Persona,
   type PersonaApi,
   type PersonaPage,
   type PersonaStatus,
+  type SseCitations,
+  type SseDelta,
+  type SseDone,
+  type SseError,
+  type SseMeta,
   type User,
+  type UserMessage,
 } from "./types";
 
 /*
@@ -202,6 +218,289 @@ function isDraftApplyAccepted(value: unknown): value is DraftApplyAccepted {
   return isString(record.version_id) && record.status === "processing";
 }
 
+const GENERATION_MODES: Record<GenerationMode, true> = {
+  mock: true,
+  llm: true,
+};
+
+function isGenerationMode(value: unknown): value is GenerationMode {
+  return typeof value === "string" && Object.hasOwn(GENERATION_MODES, value);
+}
+
+const GENERATION_STATUSES: Record<GenerationStatus, true> = {
+  queued: true,
+  running: true,
+  cancel_requested: true,
+  reconciling: true,
+  completed: true,
+  cancelled: true,
+  failed: true,
+};
+
+function isGenerationStatus(value: unknown): value is GenerationStatus {
+  return typeof value === "string" && Object.hasOwn(GENERATION_STATUSES, value);
+}
+
+function isCitation(value: unknown): value is Citation {
+  const record = asRecord(value);
+  if (record === null) return false;
+  return (
+    isString(record.id) &&
+    isString(record.source_id) &&
+    isString(record.version_id) &&
+    isString(record.title) &&
+    isString(record.excerpt)
+  );
+}
+
+function isGeneration(value: unknown): value is Generation {
+  const record = asRecord(value);
+  if (record === null) return false;
+  return (
+    isString(record.id) &&
+    isString(record.conversation_id) &&
+    isString(record.user_message_id) &&
+    isString(record.assistant_message_id) &&
+    isString(record.version_id) &&
+    isNullableString(record.retry_of_generation_id) &&
+    isGenerationMode(record.mode) &&
+    isGenerationStatus(record.status) &&
+    isString(record.content) &&
+    Array.isArray(record.citations) &&
+    record.citations.every(isCitation) &&
+    isNullableString(record.failure_code) &&
+    typeof record.can_retry === "boolean" &&
+    isString(record.created_at) &&
+    isNullableString(record.finished_at)
+  );
+}
+
+function isConversation(value: unknown): value is Conversation {
+  const record = asRecord(value);
+  if (record === null) return false;
+  return (
+    isString(record.id) &&
+    isString(record.persona_id) &&
+    isString(record.title) &&
+    isString(record.initial_version_id) &&
+    typeof record.material_changed === "boolean" &&
+    isNullableString(record.active_generation_id) &&
+    isString(record.created_at) &&
+    isString(record.updated_at)
+  );
+}
+
+function isConversationPage(value: unknown): value is ConversationPage {
+  const record = asRecord(value);
+  if (record === null) return false;
+  if (!Array.isArray(record.items)) return false;
+  return (
+    record.items.every(isConversation) && isNullableString(record.next_cursor)
+  );
+}
+
+function isUserMessage(value: unknown): value is UserMessage {
+  const record = asRecord(value);
+  if (record === null) return false;
+  return (
+    isString(record.id) &&
+    isString(record.content) &&
+    isString(record.created_at)
+  );
+}
+
+function isMessageTurn(value: unknown): value is MessageTurn {
+  const record = asRecord(value);
+  if (record === null) return false;
+  if (!isUserMessage(record.user_message)) return false;
+  return (
+    Array.isArray(record.generations) && record.generations.every(isGeneration)
+  );
+}
+
+function isMessagePage(value: unknown): value is MessagePage {
+  const record = asRecord(value);
+  if (record === null) return false;
+  if (!Array.isArray(record.items)) return false;
+  return (
+    record.items.every(isMessageTurn) && isNullableString(record.next_cursor)
+  );
+}
+
+interface GenerationReplayBody {
+  replayed: true;
+  generation: Generation;
+}
+
+function isGenerationReplayBody(value: unknown): value is GenerationReplayBody {
+  const record = asRecord(value);
+  if (record === null) return false;
+  return record.replayed === true && isGeneration(record.generation);
+}
+
+function isSseMeta(value: unknown): value is SseMeta {
+  const record = asRecord(value);
+  if (record === null) return false;
+  return (
+    isString(record.generation_id) &&
+    isString(record.conversation_id) &&
+    isString(record.user_message_id) &&
+    isString(record.assistant_message_id) &&
+    isString(record.version_id) &&
+    isGenerationMode(record.mode)
+  );
+}
+
+function isSseCitations(value: unknown): value is SseCitations {
+  const record = asRecord(value);
+  if (record === null) return false;
+  return (
+    isString(record.generation_id) &&
+    Array.isArray(record.items) &&
+    record.items.every(isCitation)
+  );
+}
+
+function isSseDelta(value: unknown): value is SseDelta {
+  const record = asRecord(value);
+  if (record === null) return false;
+  return (
+    isString(record.generation_id) &&
+    typeof record.index === "number" &&
+    isString(record.text)
+  );
+}
+
+function isSseDone(value: unknown): value is SseDone {
+  const record = asRecord(value);
+  if (record === null) return false;
+  return (
+    isString(record.generation_id) &&
+    record.status === "completed" &&
+    isString(record.finish_reason)
+  );
+}
+
+const SSE_ERROR_STATUSES = new Set(["failed", "cancelled", "reconciling"]);
+
+function isSseError(value: unknown): value is SseError {
+  const record = asRecord(value);
+  if (record === null) return false;
+  return (
+    isString(record.generation_id) &&
+    isString(record.code) &&
+    isString(record.message) &&
+    typeof record.status === "string" &&
+    SSE_ERROR_STATUSES.has(record.status)
+  );
+}
+
+/**
+ * SSE 프레임(`event: 이름\ndata: JSON`) 하나를 파싱한다. 형식이 어긋나거나 이벤트
+ * 이름을 모르면 null을 돌려주고 조용히 건너뛴다 — 알 수 없는 이벤트로 스트림
+ * 전체를 죽이지 않는다(계약이 늘어날 여지를 남긴다).
+ */
+function parseSseFrame(raw: string): ChatEvent | null {
+  let eventName: string | null = null;
+  let dataLine: string | null = null;
+  for (const line of raw.split("\n")) {
+    if (line.startsWith("event: ")) eventName = line.slice("event: ".length);
+    else if (line.startsWith("data: ")) dataLine = line.slice("data: ".length);
+  }
+  if (eventName === null || dataLine === null) return null;
+  let data: unknown;
+  try {
+    data = JSON.parse(dataLine);
+  } catch {
+    return null;
+  }
+  switch (eventName) {
+    case "meta":
+      return isSseMeta(data) ? { type: "meta", data } : null;
+    case "citations":
+      return isSseCitations(data) ? { type: "citations", data } : null;
+    case "delta":
+      return isSseDelta(data) ? { type: "delta", data } : null;
+    case "done":
+      return isSseDone(data) ? { type: "done", data } : null;
+    case "error":
+      return isSseError(data) ? { type: "error", data } : null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * 응답 본문을 SSE로 읽어 이벤트마다 onEvent를 부른다.
+ *
+ * network read 한 번이 이벤트 하나라고 가정하지 않는다 — 빈 줄("\n\n") 경계로
+ * 직접 조립한다. TextDecoder의 stream:true로 멀티바이트 문자가 read 경계에서
+ * 잘려도 다음 read와 합쳐 올바르게 디코딩한다.
+ */
+async function consumeSseStream(
+  response: Response,
+  onEvent: (event: ChatEvent) => void,
+): Promise<void> {
+  const body = response.body;
+  if (body === null) throw new ApiError(response.status, "invalid_response");
+  const reader = body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let boundary = buffer.indexOf("\n\n");
+    while (boundary !== -1) {
+      const frame = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+      const event = parseSseFrame(frame);
+      if (event !== null) onEvent(event);
+      boundary = buffer.indexOf("\n\n");
+    }
+  }
+  buffer += decoder.decode();
+  const event = parseSseFrame(buffer);
+  if (event !== null) onEvent(event);
+}
+
+async function chatCompletionRequest(
+  path: string,
+  token: string,
+  idempotencyKey: string,
+  body: Record<string, unknown>,
+  onEvent: (event: ChatEvent) => void,
+  signal?: AbortSignal,
+): Promise<ChatCompletionResult> {
+  const response = await fetch(path, {
+    method: "POST",
+    signal,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      "Idempotency-Key": idempotencyKey,
+      Accept: "text/event-stream",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw await failureFor(response);
+
+  // Web은 반드시 Content-Type을 먼저 검사한다 — JSON replay를 SSE로 파싱하면 안 된다.
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.startsWith("application/json")) {
+    const parsed = await readJsonBody(response);
+    if (!parsed.parsed || !isGenerationReplayBody(parsed.value)) {
+      throw new ApiError(response.status, "invalid_response");
+    }
+    return { replayed: true, generation: parsed.value.generation };
+  }
+  if (!contentType.startsWith("text/event-stream")) {
+    throw new ApiError(response.status, "invalid_response");
+  }
+  await consumeSseStream(response, onEvent);
+  return { replayed: false };
+}
+
 /**
  * 성공 본문이 없는 응답을 보낸다.
  *
@@ -312,4 +611,73 @@ export const httpPersonaApi: PersonaApi = {
       signal,
       headers: { "Idempotency-Key": idempotencyKey },
     }),
+
+  createConversation: (token, personaId, idempotencyKey, signal) =>
+    request(
+      `/v1/personas/${encodeURIComponent(personaId)}/conversations`,
+      token,
+      isConversation,
+      {
+        method: "POST",
+        signal,
+        headers: { "Idempotency-Key": idempotencyKey },
+      },
+    ),
+
+  listConversations: (token, personaId, cursor, signal) => {
+    const params = new URLSearchParams({ limit: "20" });
+    if (cursor !== null) params.set("cursor", cursor);
+    return request(
+      `/v1/personas/${encodeURIComponent(personaId)}/conversations?${params.toString()}`,
+      token,
+      isConversationPage,
+      { signal },
+    );
+  },
+
+  listMessages: (token, conversationId, cursor, signal) => {
+    const params = new URLSearchParams({ limit: "50" });
+    if (cursor !== null) params.set("cursor", cursor);
+    return request(
+      `/v1/conversations/${encodeURIComponent(conversationId)}/messages?${params.toString()}`,
+      token,
+      isMessagePage,
+      { signal },
+    );
+  },
+
+  startChatCompletion: (
+    token,
+    conversationId,
+    message,
+    idempotencyKey,
+    onEvent,
+    signal,
+  ) =>
+    chatCompletionRequest(
+      "/v1/chat/completions",
+      token,
+      idempotencyKey,
+      { conversation_id: conversationId, message },
+      onEvent,
+      signal,
+    ),
+
+  cancelGeneration: (token, generationId, signal) =>
+    request(
+      `/v1/generations/${encodeURIComponent(generationId)}/cancel`,
+      token,
+      isGeneration,
+      { method: "POST", signal },
+    ),
+
+  retryGeneration: (token, generationId, idempotencyKey, onEvent, signal) =>
+    chatCompletionRequest(
+      `/v1/generations/${encodeURIComponent(generationId)}/retry`,
+      token,
+      idempotencyKey,
+      {},
+      onEvent,
+      signal,
+    ),
 };
