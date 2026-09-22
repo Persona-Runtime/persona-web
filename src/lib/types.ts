@@ -234,13 +234,17 @@ export type ChatEvent =
  * POST /v1/chat/completions·retry의 200 응답 두 형태.
  *
  * Content-Type이 text/event-stream이면 onEvent 콜백으로 이벤트를 받고
- * {replayed:false}로 끝난다(스트림 자체가 상태다). application/json이면 동일
- * Idempotency-Key 재전송이라 새 스트림을 열지 않고 현재 저장 상태를 바로 준다 —
+ * {replayed:false, terminal}로 끝난다(스트림 자체가 상태다). application/json이면
+ * 동일 Idempotency-Key 재전송이라 새 스트림을 열지 않고 현재 저장 상태를 바로 준다 —
  * Web은 반드시 이 Content-Type을 먼저 검사해야 한다(JSON을 SSE로 파싱하면 안 된다).
+ *
+ * terminal은 done 또는 error 이벤트를 실제로 봤는지다 — false면 연결이 그 둘 없이
+ * 끝난(EOF) 비정상 종료라, 성공으로 넘겨짚지 말고 메시지 조회로 재확인해야 한다
+ * (계약: "살아 있는 생성을 이어받는 API는 없다").
  */
 export type ChatCompletionResult =
   | { replayed: true; generation: Generation }
-  | { replayed: false };
+  | { replayed: false; terminal: boolean };
 
 export interface PersonaApi {
   getMe(token: string, signal?: AbortSignal): Promise<User>;

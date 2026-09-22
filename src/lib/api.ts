@@ -436,16 +436,25 @@ function parseSseFrame(raw: string): ChatEvent | null {
  * network read 한 번이 이벤트 하나라고 가정하지 않는다 — 빈 줄("\n\n") 경계로
  * 직접 조립한다. TextDecoder의 stream:true로 멀티바이트 문자가 read 경계에서
  * 잘려도 다음 read와 합쳐 올바르게 디코딩한다.
+ *
+ * done·error 중 하나를 실제로 봤는지 반환한다 — 연결이 그 둘 없이 EOF로 끝나면
+ * (예: upstream 중간 단절) 호출 쪽이 성공으로 넘겨짚지 않고 메시지 조회로
+ * 재확인해야 하므로, 이 함수가 그 판단 근거를 숨기지 않는다.
  */
 async function consumeSseStream(
   response: Response,
   onEvent: (event: ChatEvent) => void,
-): Promise<void> {
+): Promise<{ terminal: boolean }> {
   const body = response.body;
   if (body === null) throw new ApiError(response.status, "invalid_response");
   const reader = body.getReader();
   const decoder = new TextDecoder("utf-8");
   let buffer = "";
+  let terminal = false;
+  const dispatch = (event: ChatEvent) => {
+    if (event.type === "done" || event.type === "error") terminal = true;
+    onEvent(event);
+  };
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -455,13 +464,14 @@ async function consumeSseStream(
       const frame = buffer.slice(0, boundary);
       buffer = buffer.slice(boundary + 2);
       const event = parseSseFrame(frame);
-      if (event !== null) onEvent(event);
+      if (event !== null) dispatch(event);
       boundary = buffer.indexOf("\n\n");
     }
   }
   buffer += decoder.decode();
   const event = parseSseFrame(buffer);
-  if (event !== null) onEvent(event);
+  if (event !== null) dispatch(event);
+  return { terminal };
 }
 
 async function chatCompletionRequest(
@@ -497,8 +507,8 @@ async function chatCompletionRequest(
   if (!contentType.startsWith("text/event-stream")) {
     throw new ApiError(response.status, "invalid_response");
   }
-  await consumeSseStream(response, onEvent);
-  return { replayed: false };
+  const { terminal } = await consumeSseStream(response, onEvent);
+  return { replayed: false, terminal };
 }
 
 /**

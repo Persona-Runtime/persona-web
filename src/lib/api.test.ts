@@ -426,9 +426,51 @@ test("SSE 이벤트가 여러 network read로 나뉘어도 순서대로 조립�
     (event) => events.push(event),
   );
 
-  expect(result).toEqual({ replayed: false });
+  expect(result).toEqual({ replayed: false, terminal: true });
   expect(events.map((e) => e.type)).toEqual(["meta", "done"]);
   expect(events[0]).toMatchObject({ data: { generation_id: "g1" } });
+});
+
+test("meta → citations → EOF(done 없음)은 terminal:false를 돌려준다", async () => {
+  // 리뷰 P1: done·error 없이 연결이 끝나면(upstream 중간 단절 등) 성공으로
+  // 넘겨짚지 않아야 한다 — 그 판단 근거가 이 반환값이다.
+  const frames = [
+    'event: meta\ndata: {"generation_id":"g1","conversation_id":"c1","user_message_id":"u1","assistant_message_id":"g1","version_id":"v1","mode":"mock"}\n\n',
+    'event: citations\ndata: {"generation_id":"g1","items":[]}\n\n',
+  ];
+  stubFetch(sseResponse(frames));
+
+  const events: ChatEvent[] = [];
+  const result = await httpPersonaApi.startChatCompletion(
+    TOKEN,
+    "c1",
+    "질문",
+    "key-1",
+    (event) => events.push(event),
+  );
+
+  expect(result).toEqual({ replayed: false, terminal: false });
+  expect(events.map((e) => e.type)).toEqual(["meta", "citations"]);
+});
+
+test("meta → delta → EOF(done 없음)은 terminal:false를 돌려준다", async () => {
+  const frames = [
+    'event: meta\ndata: {"generation_id":"g1","conversation_id":"c1","user_message_id":"u1","assistant_message_id":"g1","version_id":"v1","mode":"mock"}\n\n',
+    'event: delta\ndata: {"generation_id":"g1","index":0,"text":"합성"}\n\n',
+  ];
+  stubFetch(sseResponse(frames));
+
+  const events: ChatEvent[] = [];
+  const result = await httpPersonaApi.startChatCompletion(
+    TOKEN,
+    "c1",
+    "질문",
+    "key-1",
+    (event) => events.push(event),
+  );
+
+  expect(result).toEqual({ replayed: false, terminal: false });
+  expect(events.map((e) => e.type)).toEqual(["meta", "delta"]);
 });
 
 test("delta 인덱스가 0부터 단조 증가하는 SSE 스트림을 그대로 전달한다", async () => {

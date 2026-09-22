@@ -68,9 +68,15 @@ function TurnView({
     latest === undefined ? null : generationStatusLabel(latest);
   return (
     <li className="chat-turn">
-      <p data-role="user">{turn.user_message.content}</p>
+      <p data-role="user" data-user-message-id={turn.user_message.id}>
+        {turn.user_message.content}
+      </p>
       {latest !== undefined && (
-        <div data-role="assistant" data-generation-status={latest.status}>
+        <div
+          data-role="assistant"
+          data-generation-status={latest.status}
+          data-assistant-message-id={latest.assistant_message_id}
+        >
           <p>{latest.content}</p>
           {latest.citations.length > 0 && (
             <ul className="chat-citations" aria-label="참고 자료">
@@ -196,10 +202,16 @@ function ChatScreen({
         ))}
         {chat.streaming !== null && (
           <li className="chat-turn">
-            <p data-role="user">{chat.streaming.userMessage.content}</p>
+            <p
+              data-role="user"
+              data-user-message-id={chat.streaming.userMessage.id}
+            >
+              {chat.streaming.userMessage.content}
+            </p>
             <div
               data-role="assistant"
               data-generation-status={chat.streaming.status}
+              data-assistant-message-id={chat.streaming.assistantMessageId}
             >
               <p>{chat.streaming.content}</p>
               {chat.streaming.citations.length > 0 && (
@@ -212,6 +224,11 @@ function ChatScreen({
               {chat.streaming.status === "cancel_requested" && (
                 <p className="notice" role="status">
                   취소를 요청했습니다…
+                </p>
+              )}
+              {chat.streaming.status === "reconciling" && (
+                <p className="notice" role="status">
+                  결과를 확인하는 중입니다.
                 </p>
               )}
             </div>

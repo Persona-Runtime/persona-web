@@ -418,5 +418,5 @@ async function runMockGeneration(
   }
   mockMessageTurns.set(conversation.id, turns);
 
-  return { replayed: false };
+  return { replayed: false, terminal: true };
 }
