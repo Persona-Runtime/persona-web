@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { httpPersonaApi } from "./api";
-import { ApiError, type Persona } from "./types";
+import { ApiError, type ChatEvent, type Persona } from "./types";
 
 /*
  * 이 파일만 실제 fetch 경로(api.ts)를 실행한다. 다른 테스트는 PersonaApi를 합성
@@ -370,5 +370,188 @@ test("apply 요청은 경로·Idempotency-Key·expected_revision을 함께 보�
   expect(init.headers).toMatchObject({
     Authorization: `Bearer ${TOKEN}`,
     "Idempotency-Key": "key-apply-5",
+  });
+});
+
+/**
+ * 주어진 문자열 조각들을 그대로 개별 network read로 나눠 보내는 SSE 응답을 만든다.
+ * "network read 한 번 = 이벤트 하나"라고 가정하면 안 된다는 계약을 실제로
+ * 재현하려는 것이다 — 한 이벤트를 일부러 여러 read로 쪼개거나, 멀티바이트 UTF-8
+ * 문자를 read 경계에서 자른다.
+ */
+function sseResponse(chunks: string[]): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+      controller.close();
+    },
+  });
+  return new Response(stream, {
+    status: 200,
+    headers: { "Content-Type": "text/event-stream" },
+  });
+}
+
+/** UTF-8 바이트 조각을 그대로 여러 read로 나눠 보낸다(문자 중간에서 잘려도 된다). */
+function sseResponseFromBytes(chunks: Uint8Array[]): Response {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(chunk);
+      controller.close();
+    },
+  });
+  return new Response(stream, {
+    status: 200,
+    headers: { "Content-Type": "text/event-stream" },
+  });
+}
+
+test("SSE 이벤트가 여러 network read로 나뉘어도 순서대로 조립한다", async () => {
+  const metaFrame =
+    'event: meta\ndata: {"generation_id":"g1","conversation_id":"c1","user_message_id":"u1","assistant_message_id":"g1","version_id":"v1","mode":"mock"}\n\n';
+  const doneFrame =
+    'event: done\ndata: {"generation_id":"g1","status":"completed","finish_reason":"stop"}\n\n';
+  const combined = metaFrame + doneFrame;
+  // 이벤트 경계와 무관한 임의 지점(중간)에서 두 read로 쪼갠다.
+  const cut = Math.floor(combined.length / 2);
+  stubFetch(sseResponse([combined.slice(0, cut), combined.slice(cut)]));
+
+  const events: ChatEvent[] = [];
+  const result = await httpPersonaApi.startChatCompletion(
+    TOKEN,
+    "c1",
+    "질문",
+    "key-1",
+    (event) => events.push(event),
+  );
+
+  expect(result).toEqual({ replayed: false });
+  expect(events.map((e) => e.type)).toEqual(["meta", "done"]);
+  expect(events[0]).toMatchObject({ data: { generation_id: "g1" } });
+});
+
+test("delta 인덱스가 0부터 단조 증가하는 SSE 스트림을 그대로 전달한다", async () => {
+  const frames = [
+    'event: meta\ndata: {"generation_id":"g1","conversation_id":"c1","user_message_id":"u1","assistant_message_id":"g1","version_id":"v1","mode":"mock"}\n\n',
+    'event: citations\ndata: {"generation_id":"g1","items":[]}\n\n',
+    'event: delta\ndata: {"generation_id":"g1","index":0,"text":"합"}\n\n',
+    'event: delta\ndata: {"generation_id":"g1","index":1,"text":"성"}\n\n',
+    'event: done\ndata: {"generation_id":"g1","status":"completed","finish_reason":"stop"}\n\n',
+  ];
+  stubFetch(sseResponse(frames));
+
+  const events: ChatEvent[] = [];
+  await httpPersonaApi.startChatCompletion(
+    TOKEN,
+    "c1",
+    "질문",
+    "key-1",
+    (event) => events.push(event),
+  );
+
+  const deltas = events.filter((e) => e.type === "delta");
+  expect(deltas.map((d) => d.data.index)).toEqual([0, 1]);
+  expect(deltas.map((d) => d.data.text).join("")).toBe("합성");
+});
+
+test("멀티바이트 UTF-8 문자가 network read 경계에서 잘려도 올바르게 디코딩한다", async () => {
+  const frame =
+    'event: delta\ndata: {"generation_id":"g1","index":0,"text":"한글"}\n\n';
+  const bytes = new TextEncoder().encode(frame);
+  // "한"(3바이트) 중간에서 자른다 — 일부러 문자 경계가 아닌 바이트 경계로 쪼갠다.
+  const cut = 3 + 1;
+  stubFetch(sseResponseFromBytes([bytes.slice(0, cut), bytes.slice(cut)]));
+
+  const events: ChatEvent[] = [];
+  await httpPersonaApi.startChatCompletion(
+    TOKEN,
+    "c1",
+    "질문",
+    "key-1",
+    (event) => events.push(event),
+  );
+
+  expect(events).toHaveLength(1);
+  expect(events[0]).toMatchObject({ type: "delta", data: { text: "한글" } });
+});
+
+test("알 수 없는 이벤트 이름은 조용히 건너뛰고 나머지는 처리한다", async () => {
+  const frames = [
+    'event: unknown_future_event\ndata: {"whatever":true}\n\n',
+    'event: done\ndata: {"generation_id":"g1","status":"completed","finish_reason":"stop"}\n\n',
+  ];
+  stubFetch(sseResponse(frames));
+
+  const events: ChatEvent[] = [];
+  await httpPersonaApi.startChatCompletion(
+    TOKEN,
+    "c1",
+    "질문",
+    "key-1",
+    (event) => events.push(event),
+  );
+
+  expect(events.map((e) => e.type)).toEqual(["done"]);
+});
+
+test("Content-Type이 application/json이면 SSE로 파싱하지 않고 replay를 바로 반환한다", async () => {
+  const generation = {
+    id: "g1",
+    conversation_id: "c1",
+    user_message_id: "u1",
+    assistant_message_id: "g1",
+    version_id: "v1",
+    retry_of_generation_id: null,
+    mode: "mock",
+    status: "completed",
+    content: "이미 저장된 응답",
+    citations: [],
+    failure_code: null,
+    can_retry: true,
+    created_at: "2026-09-22T00:00:00+00:00",
+    finished_at: "2026-09-22T00:00:01+00:00",
+  };
+  stubFetch(respond(JSON.stringify({ replayed: true, generation })));
+
+  const onEvent = vi.fn();
+  const result = await httpPersonaApi.startChatCompletion(
+    TOKEN,
+    "c1",
+    "질문",
+    "key-1",
+    onEvent,
+  );
+
+  expect(onEvent).not.toHaveBeenCalled();
+  expect(result).toEqual({ replayed: true, generation });
+});
+
+test("chat/completions 요청은 Idempotency-Key와 conversation_id·message 본문을 보낸다", async () => {
+  const frames = [
+    'event: meta\ndata: {"generation_id":"g1","conversation_id":"c1","user_message_id":"u1","assistant_message_id":"g1","version_id":"v1","mode":"mock"}\n\n',
+    'event: citations\ndata: {"generation_id":"g1","items":[]}\n\n',
+    'event: done\ndata: {"generation_id":"g1","status":"completed","finish_reason":"stop"}\n\n',
+  ];
+  const fetchMock = stubFetch(sseResponse(frames));
+
+  await httpPersonaApi.startChatCompletion(
+    TOKEN,
+    "c1",
+    "모루야 안녕",
+    "key-42",
+    () => {},
+  );
+
+  const [path, init] = fetchMock.mock.calls[0];
+  expect(path).toBe("/v1/chat/completions");
+  expect(init.method).toBe("POST");
+  expect(init.body).toBe(
+    JSON.stringify({ conversation_id: "c1", message: "모루야 안녕" }),
+  );
+  expect(init.headers).toMatchObject({
+    Authorization: `Bearer ${TOKEN}`,
+    "Idempotency-Key": "key-42",
+    Accept: "text/event-stream",
   });
 });
