@@ -39,6 +39,11 @@ function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === "string";
 }
 
+/** isNullableString과 같은 이유 — indexed_revision처럼 필수지만 nullable인 숫자 필드용. */
+function isNullableNumber(value: unknown): value is number | null {
+  return value === null || typeof value === "number";
+}
+
 /**
  * 계약이 고정한 상태 목록.
  *
@@ -191,7 +196,10 @@ function isDraft(value: unknown): value is Draft {
     Array.isArray(record.warnings) &&
     record.warnings.every(isDraftWarning) &&
     typeof record.can_activate === "boolean" &&
-    isString(record.updated_at)
+    isString(record.updated_at) &&
+    isNullableNumber(record.indexed_revision) &&
+    isNullableString(record.indexed_at) &&
+    isNullableString(record.error_code)
   );
 }
 

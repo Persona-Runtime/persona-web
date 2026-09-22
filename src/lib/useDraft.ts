@@ -9,7 +9,7 @@ import {
   type PersonaApi,
 } from "./types";
 
-const POLL_INTERVAL_MS = 5000;
+const POLL_INTERVAL_MS = 3000;
 
 export interface DraftSourceInput {
   kind: string;

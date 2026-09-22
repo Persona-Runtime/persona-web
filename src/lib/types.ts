@@ -87,6 +87,15 @@ export interface Draft {
   warnings: DraftWarning[];
   can_activate: boolean;
   updated_at: string;
+  /**
+   * status/error_code는 최신 적용 시도 결과이고, indexed_revision/indexed_at은
+   * 실제로 검색에 쓸 수 있는 마지막 색인 성공 revision·시각이다 — 둘은 다를 수
+   * 있다(rev3 색인 성공 후 rev4가 실패해도 indexed_revision은 3을 유지한다).
+   */
+  indexed_revision: number | null;
+  indexed_at: string | null;
+  /** status가 failed일 때만 값이 있다. 다음 색인이 성공하면 다시 null로 돌아간다. */
+  error_code: string | null;
 }
 
 /** POST draft/apply의 202 응답. status는 accepted 시점에 늘 processing이다. */
