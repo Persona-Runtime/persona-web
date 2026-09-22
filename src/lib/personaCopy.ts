@@ -123,12 +123,18 @@ export function draftStatusLabel(status: DraftStatus): string {
 }
 
 /**
- * 실패 상태를 일반 문구로만 안내한다.
- *
- * 계약상 error_code(no_content 등)는 openapi.json의 Draft 응답에 없다 — DB 컬럼으로는
- * 있지만 API가 돌려주지 않는다(백엔드 갭, 완료 보고에 남김). 그래서 "왜" 실패했는지는
- * 보여줄 수 없고 "실패했다"는 사실과 다시 시도할 수 있다는 안내만 할 수 있다.
+ * 알려진 코드만 구체적으로 안내한다. openapi.json은 error_code를 자유 문자열로만
+ * 정의해(enum 없음) 전체 목록이 없다 — 모르는 코드를 조용히 일반 문구로 삼키면
+ * 새 실패 원인을 놓치므로, 알려지지 않은 코드는 원문 그대로 함께 보여준다.
  */
-export function draftFailedMessage(): string {
-  return "자료 처리에 실패했습니다. 자료를 확인한 뒤 다시 적용해주세요.";
+const DRAFT_FAILURE_MESSAGES: Record<string, string> = {
+  no_content: "색인할 자료가 없습니다. 본문이나 대사를 먼저 입력해주세요.",
+};
+
+export function draftFailedMessage(errorCode: string | null): string {
+  if (errorCode !== null && errorCode in DRAFT_FAILURE_MESSAGES) {
+    return DRAFT_FAILURE_MESSAGES[errorCode];
+  }
+  const suffix = errorCode === null ? "" : ` (코드: ${errorCode})`;
+  return `자료 처리에 실패했습니다. 자료를 확인한 뒤 다시 적용해주세요.${suffix}`;
 }

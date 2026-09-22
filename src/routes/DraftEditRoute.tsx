@@ -12,7 +12,7 @@ import {
   SPEECH_MAX,
   codePointLength,
 } from "../lib/limits";
-import { draftFailedMessage } from "../lib/personaCopy";
+import { draftFailedMessage, formatCreatedAt } from "../lib/personaCopy";
 import { useStudio } from "../lib/studioContext";
 import { useDraft } from "../lib/useDraft";
 
@@ -148,8 +148,9 @@ function DraftEditForm({
     ]);
   };
 
-  const canApply =
-    draft.status !== "processing" && draftState.applyState !== "loading";
+  // can_activate는 서버 판정값이다 — 로컬에서 status만 보고 다시 계산하면 서버가
+  // 아직 허용하지 않는 적용을 화면이 먼저 열어줄 수 있다(계약: 지금은 항상 false).
+  const canApply = draft.can_activate && draftState.applyState !== "loading";
 
   return (
     <>
@@ -159,10 +160,22 @@ function DraftEditForm({
 
       <div className="facts">
         <DraftStatusBadge status={draft.status} />
+        {/* status(최신 적용 시도)와 indexed_revision(마지막 색인 성공)은 계약상
+            다를 수 있다 — 실패 뒤에도 이전 색인이 살아 있음을 보여주려면 같은
+            배지로 합치지 않고 따로 표시해야 한다. */}
+        <p className="guide">
+          {draft.indexed_revision === null
+            ? "아직 색인된 자료 없음"
+            : `현재 색인: rev ${draft.indexed_revision}${
+                draft.indexed_at === null
+                  ? ""
+                  : ` (${formatCreatedAt(draft.indexed_at)})`
+              }`}
+        </p>
       </div>
 
       {draft.status === "failed" && (
-        <p className="notice">{draftFailedMessage()}</p>
+        <p className="notice">{draftFailedMessage(draft.error_code)}</p>
       )}
       {draft.status === "processing" && (
         <p className="guide" role="status">

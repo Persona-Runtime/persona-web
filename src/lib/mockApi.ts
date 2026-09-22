@@ -30,6 +30,9 @@ function mockDraft(personaId: string, settings: DraftSettings): Draft {
     warnings: [],
     can_activate: false,
     updated_at: new Date().toISOString(),
+    indexed_revision: null,
+    indexed_at: null,
+    error_code: null,
   };
 }
 
@@ -201,11 +204,27 @@ export const mockPersonaApi: PersonaApi = {
     window.setTimeout(() => {
       const current = mockDrafts.get(personaId);
       if (current === undefined || current.status !== "processing") return;
-      mockDrafts.set(personaId, {
-        ...current,
-        status: PERSONA_MOCK_APPLY_FAIL ? "failed" : "ready",
-        updated_at: new Date().toISOString(),
-      });
+      // 실패해도 indexed_revision/indexed_at은 건드리지 않는다 — 계약대로 "마지막
+      // 색인 성공"은 최신 시도의 성패와 별개다.
+      mockDrafts.set(
+        personaId,
+        PERSONA_MOCK_APPLY_FAIL
+          ? {
+              ...current,
+              status: "failed",
+              error_code: "mock_failed",
+              updated_at: new Date().toISOString(),
+            }
+          : {
+              ...current,
+              status: "ready",
+              error_code: null,
+              indexed_revision: current.revision,
+              indexed_at: new Date().toISOString(),
+              can_activate: true,
+              updated_at: new Date().toISOString(),
+            },
+      );
     }, APPLY_DELAY_MS);
 
     return { version_id: processing.version_id, status: "processing" };

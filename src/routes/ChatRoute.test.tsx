@@ -22,6 +22,9 @@ const baseDraft: Draft = {
   warnings: [],
   can_activate: false,
   updated_at: "2026-09-10T00:00:00Z",
+  indexed_revision: null,
+  indexed_at: null,
+  error_code: null,
 };
 
 async function openChatScreen(user: ReturnType<typeof renderApp>["user"]) {
