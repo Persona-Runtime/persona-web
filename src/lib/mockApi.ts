@@ -1,7 +1,14 @@
 import {
   ApiError,
+  type ChatCompletionResult,
+  type ChatEvent,
+  type Conversation,
+  type ConversationPage,
   type Draft,
   type DraftSettings,
+  type Generation,
+  type MessagePage,
+  type MessageTurn,
   type Persona,
   type PersonaApi,
   type PersonaPage,
@@ -15,6 +22,9 @@ const mockUser: User = { id: "synthetic-user", display_name: "합성 사용자" 
 let mockPersonas: Persona[] = [];
 // 초안은 캐릭터당 하나다. 실제 저장소도 persona_id를 PK로 두어 같은 규칙을 강제한다.
 const mockDrafts = new Map<string, Draft>();
+const mockConversations = new Map<string, Conversation>();
+const mockMessageTurns = new Map<string, MessageTurn[]>();
+let mockGenerationSeq = 0;
 
 function mockDraft(personaId: string, settings: DraftSettings): Draft {
   return {
@@ -236,4 +246,196 @@ export const mockPersonaApi: PersonaApi = {
     if (!mockDrafts.delete(personaId))
       throw new ApiError(404, "draft_not_found");
   },
+
+  async createConversation(token, personaId, _idempotencyKey, signal) {
+    await delay(signal);
+    if (!token.trim()) throw new ApiError(401, "unauthorized");
+    const draft = mockDrafts.get(personaId);
+    if (draft === undefined || draft.status !== "ready") {
+      throw new ApiError(409, "not_indexed");
+    }
+    const now = new Date().toISOString();
+    const conversation: Conversation = {
+      id: crypto.randomUUID(),
+      persona_id: personaId,
+      title: draft.settings.name,
+      initial_version_id: draft.version_id,
+      material_changed: false,
+      active_generation_id: null,
+      created_at: now,
+      updated_at: now,
+    };
+    mockConversations.set(conversation.id, conversation);
+    mockMessageTurns.set(conversation.id, []);
+    return conversation;
+  },
+
+  async listConversations(
+    token,
+    personaId,
+    _cursor,
+    signal,
+  ): Promise<ConversationPage> {
+    await delay(signal);
+    if (!token.trim()) throw new ApiError(401, "unauthorized");
+    const items = [...mockConversations.values()]
+      .filter((conversation) => conversation.persona_id === personaId)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+    return { items, next_cursor: null };
+  },
+
+  async listMessages(
+    token,
+    conversationId,
+    _cursor,
+    signal,
+  ): Promise<MessagePage> {
+    await delay(signal);
+    if (!token.trim()) throw new ApiError(401, "unauthorized");
+    return {
+      items: mockMessageTurns.get(conversationId) ?? [],
+      next_cursor: null,
+    };
+  },
+
+  async startChatCompletion(
+    token,
+    conversationId,
+    message,
+    _idempotencyKey,
+    onEvent,
+    signal,
+  ): Promise<ChatCompletionResult> {
+    if (!token.trim()) throw new ApiError(401, "unauthorized");
+    const conversation = mockConversations.get(conversationId);
+    if (conversation === undefined)
+      throw new ApiError(404, "conversation_not_found");
+    return runMockGeneration(conversation, message, onEvent, signal);
+  },
+
+  async cancelGeneration(token, generationId, signal): Promise<Generation> {
+    await delay(signal);
+    if (!token.trim()) throw new ApiError(401, "unauthorized");
+    // mock 스트림은 delay()만으로 끝나 취소 시점에 가로챌 실제 스트림이 없다 —
+    // 합성 응답이므로 이미 끝났다고 보고 그대로 완료 상태를 돌려준다.
+    for (const turns of mockMessageTurns.values()) {
+      for (const turn of turns) {
+        const found = turn.generations.find((g) => g.id === generationId);
+        if (found !== undefined) return found;
+      }
+    }
+    throw new ApiError(404, "generation_not_found");
+  },
+
+  async retryGeneration(
+    token,
+    generationId,
+    _idempotencyKey,
+    onEvent,
+    signal,
+  ): Promise<ChatCompletionResult> {
+    if (!token.trim()) throw new ApiError(401, "unauthorized");
+    for (const [conversationId, turns] of mockMessageTurns) {
+      for (const turn of turns) {
+        const original = turn.generations.find((g) => g.id === generationId);
+        if (original === undefined) continue;
+        const conversation = mockConversations.get(conversationId);
+        if (conversation === undefined) break;
+        return runMockGeneration(
+          conversation,
+          turn.user_message.content,
+          onEvent,
+          signal,
+          original.id,
+        );
+      }
+    }
+    throw new ApiError(404, "generation_not_found");
+  },
 };
+
+const MOCK_REPLY_CHUNKS = ["합성 ", "응답", "입니다."];
+
+/**
+ * mock 모드 전용 합성 생성. 실제 InferenceClient 계약(첫 토큰 지연·취소·오류)을
+ * 재현하지 않는다 — 화면 배선을 눈으로 확인하기 위한 최소 동작이다.
+ */
+async function runMockGeneration(
+  conversation: Conversation,
+  message: string,
+  onEvent: (event: ChatEvent) => void,
+  signal: AbortSignal | undefined,
+  retryOfGenerationId: string | null = null,
+): Promise<ChatCompletionResult> {
+  const generationId = `mock-generation-${++mockGenerationSeq}`;
+  const userMessageId = `mock-message-${mockGenerationSeq}`;
+  const now = new Date().toISOString();
+
+  onEvent({
+    type: "meta",
+    data: {
+      generation_id: generationId,
+      conversation_id: conversation.id,
+      user_message_id: userMessageId,
+      assistant_message_id: generationId,
+      version_id: conversation.initial_version_id,
+      mode: "mock",
+    },
+  });
+  await delay(signal);
+  onEvent({
+    type: "citations",
+    data: { generation_id: generationId, items: [] },
+  });
+
+  let content = "";
+  for (const [index, chunk] of MOCK_REPLY_CHUNKS.entries()) {
+    await delay(signal);
+    content += chunk;
+    onEvent({
+      type: "delta",
+      data: { generation_id: generationId, index, text: chunk },
+    });
+  }
+  await delay(signal);
+  onEvent({
+    type: "done",
+    data: {
+      generation_id: generationId,
+      status: "completed",
+      finish_reason: "stop",
+    },
+  });
+
+  const generation: Generation = {
+    id: generationId,
+    conversation_id: conversation.id,
+    user_message_id: userMessageId,
+    assistant_message_id: generationId,
+    version_id: conversation.initial_version_id,
+    retry_of_generation_id: retryOfGenerationId,
+    mode: "mock",
+    status: "completed",
+    content,
+    citations: [],
+    failure_code: null,
+    can_retry: true,
+    created_at: now,
+    finished_at: new Date().toISOString(),
+  };
+  const turns = mockMessageTurns.get(conversation.id) ?? [];
+  if (retryOfGenerationId === null) {
+    turns.push({
+      user_message: { id: userMessageId, content: message, created_at: now },
+      generations: [generation],
+    });
+  } else {
+    const turn = turns.find((t) =>
+      t.generations.some((g) => g.id === retryOfGenerationId),
+    );
+    turn?.generations.push(generation);
+  }
+  mockMessageTurns.set(conversation.id, turns);
+
+  return { replayed: false, terminal: true };
+}

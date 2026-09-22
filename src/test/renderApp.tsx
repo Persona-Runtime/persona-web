@@ -33,6 +33,14 @@ export function personaApi(overrides: Partial<PersonaApi> = {}): PersonaApi {
     patchDraft: vi.fn(),
     applyDraft: vi.fn(),
     discardDraft: vi.fn().mockResolvedValue(undefined),
+    createConversation: vi.fn(),
+    listConversations: vi
+      .fn()
+      .mockResolvedValue({ items: [], next_cursor: null }),
+    listMessages: vi.fn().mockResolvedValue({ items: [], next_cursor: null }),
+    startChatCompletion: vi.fn(),
+    cancelGeneration: vi.fn(),
+    retryGeneration: vi.fn(),
     ...overrides,
   };
 }
