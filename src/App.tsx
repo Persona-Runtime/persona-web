@@ -2,7 +2,9 @@ import { Route, Routes } from "react-router";
 import { SessionProvider } from "./components/SessionProvider";
 import { createPersonaApi } from "./lib/client";
 import type { PersonaApi } from "./lib/types";
+import { ChatRoute } from "./routes/ChatRoute";
 import { CreateRoute } from "./routes/CreateRoute";
+import { DraftEditRoute } from "./routes/DraftEditRoute";
 import { NotFoundRoute } from "./routes/NotFoundRoute";
 import { PersonaOverviewRoute } from "./routes/PersonaOverviewRoute";
 import { RequireSession } from "./routes/RequireSession";
@@ -31,6 +33,8 @@ export default function App({
             <Route index element={<StudioHome />} />
             <Route path="new" element={<CreateRoute />} />
             <Route path=":personaId" element={<PersonaOverviewRoute />} />
+            <Route path=":personaId/draft" element={<DraftEditRoute />} />
+            <Route path=":personaId/chat" element={<ChatRoute />} />
           </Route>
         </Route>
         <Route path="*" element={<NotFoundRoute />} />

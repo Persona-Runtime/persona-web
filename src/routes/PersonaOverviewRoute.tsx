@@ -128,6 +128,15 @@ export function PersonaOverviewRoute() {
 
       <NextStepGuide status={persona.status} />
 
+      <nav className="workspace-nav" aria-label="자료·대화">
+        <Link className="text-button" to={`/personas/${persona.id}/draft`}>
+          자료 편집
+        </Link>
+        <Link className="text-button" to={`/personas/${persona.id}/chat`}>
+          대화
+        </Link>
+      </nav>
+
       {justCreated && list.state === "error" && (
         <p className="notice">
           캐릭터는 생성됐지만 목록을 갱신하지 못했습니다. 목록에서 다시 조회해
