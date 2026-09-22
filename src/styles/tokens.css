@@ -1,0 +1,60 @@
+/*
+ * 디자인 토큰.
+ *
+ * 색·간격·모서리 값을 여기서만 정한다. 화면마다 hex를 직접 적으면 같은 의미의 색이
+ * 조금씩 어긋나고, 나중에 한 곳만 바꾸는 것이 불가능해진다.
+ *
+ * 강조색은 하나(--accent)만 쓴다. 상태 색은 배지와 알림처럼 의미가 있는 자리에만
+ * 쓰고, 색만으로 뜻을 전달하지 않도록 항상 텍스트 라벨을 함께 둔다.
+ */
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-muted: #f1f3f6;
+  --border: #e3e6ec;
+  --text: #1e293b;
+  --text-muted: #5b6577;
+
+  --accent: #3b5bdb;
+  --accent-strong: #2f49b2;
+  --accent-soft: #eef1fd;
+
+  --danger: #991b1b;
+  --danger-soft: #fef2f2;
+  --warn: #92400e;
+  --warn-soft: #fffbeb;
+  --ok: #166534;
+  --ok-soft: #f0fdf4;
+
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+
+  --shadow-card: 0 1px 3px rgb(15 23 42 / 8%);
+  --focus-ring: 0 0 0 3px rgb(59 91 219 / 30%);
+
+  /*
+   * 캐릭터별 아바타 색. HSL을 돌려 만들지 않고 여섯 쌍을 고정한다.
+   * 색상환을 회전시키면 색에 따라 글자 대비가 들쭉날쭉해져 확인할 수 없다.
+   * 쌍의 개수는 lib/avatar.ts의 ACCENT_COUNT와 맞춰야 한다.
+   */
+  --accent-0-bg: #e7ecfd;
+  --accent-0-fg: #2b3f9e;
+  --accent-1-bg: #e6f4ea;
+  --accent-1-fg: #1f6b3f;
+  --accent-2-bg: #fdeceb;
+  --accent-2-fg: #9e2f2a;
+  --accent-3-bg: #fdf3e0;
+  --accent-3-fg: #8a5a12;
+  --accent-4-bg: #eae9fb;
+  --accent-4-fg: #4b3ba0;
+  --accent-5-bg: #e3f2f6;
+  --accent-5-fg: #1c5f72;
+}
