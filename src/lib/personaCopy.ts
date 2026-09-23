@@ -54,7 +54,10 @@ export function messageFor(error: unknown): string {
     case "generation_not_found":
       return "생성 기록을 찾을 수 없습니다.";
     case "generation_in_progress":
-      return "이미 진행 중인 응답이 있습니다. 완료된 뒤 다시 시도해주세요.";
+      // 서버의 reconciling→failed 지연 해소가 최대 5분(300초)이라, 그 시간
+      // 안에는 진짜로 끝난 응답도 이 오류로 보일 수 있다 — "완료된 뒤"보다
+      // 구체적인 시간 안내가 사용자에게 더 정확하다.
+      return "이전 응답을 정리하는 중입니다. 최대 5분 뒤 다시 시도해주세요.";
     case "retry_not_latest":
       return "이 시도는 대화의 최신 질문이 아니라 다시 시도할 수 없습니다.";
     case "retry_input_unavailable":
