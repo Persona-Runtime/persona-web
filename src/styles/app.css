@@ -136,6 +136,24 @@ form {
   justify-content: space-between;
   gap: var(--space-4);
   margin-bottom: var(--space-5);
+  /* .section-heading과 같은 이유. subject 한 줄이 늘어나면서 더 좁아졌다. */
+  flex-wrap: wrap;
+}
+
+.topbar__identity {
+  min-width: 0;
+}
+
+/* subject는 github:<login>처럼 공백 없는 긴 문자열이라 줄바꿈 기회가 없다. */
+.topbar__subject {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.topbar strong {
+  overflow-wrap: anywhere;
 }
 
 .eyebrow {
@@ -195,6 +213,13 @@ form {
   display: grid;
   gap: var(--space-5);
   align-items: start;
+  /*
+   * 그리드 아이템의 기본 min-width는 auto(=min-content)다. 줄바꿈되지 않는 것이
+   * 하나라도 있으면 트랙이 화면을 넘겨 문서 전체가 가로로 스크롤된다. 데스크톱
+   * 2단은 아래 minmax(0, 1fr)로 이미 막혀 있었지만 모바일 단일 컬럼에는 그 방어가
+   * 없었다 — 폰에서 가로 스크롤이 생기던 가장 큰 구조적 원인이다.
+   */
+  grid-template-columns: minmax(0, 1fr);
 }
 
 @media (min-width: 48rem) {
@@ -220,6 +245,8 @@ form {
   border-radius: var(--radius-lg);
   padding: var(--space-5);
   box-shadow: var(--shadow-card);
+  /* 위 .studio 주석과 같은 이유 — 내용이 패널 밖으로 밀어내지 못하게 한다. */
+  min-width: 0;
 }
 
 .studio__list h2 {
@@ -233,6 +260,9 @@ form {
   justify-content: space-between;
   gap: var(--space-3);
   margin-bottom: var(--space-4);
+  /* 버튼이 white-space: nowrap이라 폰 폭에서 제목과 자리를 다툰다. 밀어내는 대신
+     아래 줄로 내린다. */
+  flex-wrap: wrap;
 }
 
 .quota {
@@ -294,6 +324,16 @@ form {
 
 .facts dd {
   margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* 좁은 폭에서 auto 1fr 두 열은 오른쪽 열을 눌러 버린다. 위아래로 쌓는다. */
+@media (max-width: 30rem) {
+  .facts {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+    padding: var(--space-3);
+  }
 }
 
 /* ---------- 캐릭터 카드와 목록 ---------- */
@@ -521,5 +561,167 @@ form {
 @media (prefers-reduced-motion: reduce) {
   .skeleton {
     animation: none;
+  }
+}
+
+/* ---------- 자료 편집 폼 ---------- */
+
+/*
+ * textarea에는 지금까지 규칙이 한 줄도 없었다 — 기본 스타일은 폰트가 본문과 다르고
+ * cols 기준 폭을 써서 부모보다 넓어질 수 있다(가로 스크롤의 원인 중 하나).
+ * 붙여넣기용 입력이므로 기본 높이도 넉넉히 둔다.
+ */
+textarea {
+  font: inherit;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  min-height: 8rem;
+  padding: 0.7rem;
+  border: 1px solid #94a3b8;
+  border-radius: var(--radius-sm);
+  /* 가로 리사이즈는 부모 폭을 넘겨 레이아웃을 깨뜨린다. 세로만 허용한다. */
+  resize: vertical;
+}
+
+.counter {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.counter--over {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.optional-sources {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.workspace-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+/* 요청 ID(UUID)처럼 공백 없는 값이 들어온다. */
+.error,
+.notice,
+.success {
+  overflow-wrap: anywhere;
+}
+
+/* ---------- 대화 ---------- */
+
+.chat-messages {
+  display: grid;
+  gap: var(--space-4);
+  list-style: none;
+  margin: 0 0 var(--space-4);
+  /* ul 기본 padding-left(40px)는 좁은 폭에서 본문을 크게 깎아먹는다. */
+  padding: 0;
+}
+
+.chat-turn {
+  display: grid;
+  gap: var(--space-2);
+}
+
+/*
+ * 말풍선 구분은 클래스가 아니라 data-role 속성으로 한다 — 그 속성은 테스트가
+ * 셀렉터로 쓰는 계약이라 이미 마크업에 있고, 덕분에 TSX를 건드리지 않아도 된다.
+ */
+.chat-turn [data-role="user"],
+.chat-turn [data-role="assistant"] {
+  margin: 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  /* 사용자가 붙여넣은 URL·토큰 같은 긴 단어가 폭을 밀어내지 못하게 한다. */
+  overflow-wrap: anywhere;
+}
+
+.chat-turn [data-role="user"] {
+  background: var(--surface-muted);
+  justify-self: end;
+  max-width: 85%;
+}
+
+.chat-turn [data-role="assistant"] {
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.chat-turn [data-role="assistant"] p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.chat-citations {
+  margin: var(--space-2) 0 0;
+  padding: 0 0 0 var(--space-4);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- 폰 폭(≤430px) ---------- */
+
+@media (max-width: 30rem) {
+  /* 좌우 패딩이 쌓여 본문에 쓸 폭이 350px 아래로 내려간다. 둘 다 줄인다. */
+  .shell {
+    padding: var(--space-4) var(--space-3);
+  }
+
+  .studio__list,
+  .studio__workspace {
+    padding: var(--space-4);
+  }
+}
+
+/*
+ * 대화 화면에서만 입력창을 하단에 붙인다.
+ *
+ * 스코프를 좁게 잡는 이유: data-pane="detail"이고 폰 폭일 때만 작업 영역이 단독으로
+ * 보이므로, 이 조건 밖(데스크톱 2단)에서는 기존 레이아웃을 그대로 둬야 한다.
+ * position: fixed가 아니라 sticky를 쓰는 이유는 문서 흐름을 유지해 메시지 목록의
+ * 높이 계산이 그대로 맞기 때문이다.
+ */
+@media (max-width: 47.99rem) {
+  .studio[data-pane="detail"] .studio__workspace form:has(#chat-input) {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0 calc(var(--space-4) * -1);
+    padding: var(--space-3) var(--space-4);
+    /* 가상 키보드가 올라와도 하단 안전 영역만큼 여유를 둔다. */
+    padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+  }
+
+  /* 라벨은 접근성상 필요하지만(테스트도 getByLabelText로 찾는다) 붙박이 입력줄에서는
+     자리를 차지하면 안 된다. 지우지 않고 시각적으로만 숨긴다. */
+  .studio[data-pane="detail"] .studio__workspace form:has(#chat-input) label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* 마지막 메시지가 붙박이 입력줄에 가리지 않게 여백을 둔다. */
+  .studio[data-pane="detail"] .chat-messages {
+    margin-bottom: var(--space-6);
   }
 }
