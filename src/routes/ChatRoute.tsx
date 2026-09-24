@@ -1,16 +1,15 @@
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import { RetryNotice } from "../components/RetryNotice";
 import { WorkspaceHeading } from "../components/WorkspaceHeading";
 import { useStudio } from "../lib/studioContext";
 import { useChat } from "../lib/useChat";
-import { useDraft } from "../lib/useDraft";
 import type { Generation, MessageTurn } from "../lib/types";
 
 const MAX_MESSAGE_CHARS = 2000;
 
 /**
- * 대화 화면. 캐릭터 자료가 적용된(Draft.status === "ready") 뒤에만 열린다.
+ * 대화 화면. 캐릭터에 적용본(active_version_id)이 있어야 열린다.
  *
  * 실제 fetch 기반 POST SSE로 서버와 통신한다(EventSource 안 씀 — 인증 헤더와 POST
  * body를 보내야 한다). Content-Type을 먼저 검사해 JSON replay와 스트림을 구분하는
@@ -34,7 +33,12 @@ export function ChatRoute() {
   }
 
   return (
-    <ChatScreen api={api} personaId={personaId} personaName={persona.name} />
+    <ChatScreen
+      api={api}
+      personaId={personaId}
+      personaName={persona.name}
+      activeVersionId={persona.active_version_id}
+    />
   );
 }
 
@@ -110,29 +114,29 @@ function ChatScreen({
   api,
   personaId,
   personaName,
+  activeVersionId,
 }: {
   api: ReturnType<typeof useStudio>["api"];
   personaId: string;
   personaName: string;
+  activeVersionId: string | null;
 }) {
-  const { state: draftState, draft } = useDraft(api, personaId, personaName);
   const chat = useChat(api, personaId);
   const [input, setInput] = useState("");
+  const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  if (draftState === "loading" || draftState === "idle") {
-    return (
-      <>
-        <WorkspaceHeading id="workspace-title">
-          {personaName} — 대화
-        </WorkspaceHeading>
-        <p className="guide" role="status">
-          상태를 확인하는 중입니다…
-        </p>
-      </>
-    );
-  }
+  // 새 메시지·스트리밍 조각이 올 때마다 목록 끝으로 내린다. 폰에서는 입력줄이
+  // 하단에 붙어 있어, 내리지 않으면 방금 온 답이 그 뒤에 가려진다.
+  // scrollIntoView는 jsdom에 없으므로(레이아웃 자체가 없다) 옵셔널로 부른다.
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView?.({ block: "end" });
+  }, [chat.turns, chat.streaming]);
 
-  if (draft === null || draft.status !== "ready") {
+  // 대화 가능 여부는 **적용본**이 정한다. 초안 상태로 판정하면 안 된다 — 활성화하면
+  // 초안 슬롯이 비어 getDraft가 409 draft_not_started를 돌려주므로, 정상적으로
+  // 자료를 적용한 캐릭터일수록 대화가 막힌다. 서버도 같은 기준이다: 대화 생성은
+  // 적용본이 없으면 409 no_active_version이다(계약 §7).
+  if (activeVersionId === null) {
     return (
       <>
         <WorkspaceHeading id="workspace-title">
@@ -235,6 +239,8 @@ function ChatScreen({
           </li>
         )}
       </ul>
+      {/* 스크롤 목적지. ul 안에 두면 li가 아닌 자식이 되어 마크업이 어긋난다. */}
+      <div ref={bottomRef} aria-hidden="true" />
 
       {chat.sendError !== null && (
         <p className="error" role="alert">

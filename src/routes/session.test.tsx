@@ -4,11 +4,13 @@ import { ApiError, type Persona } from "../lib/types";
 import {
   SYNTHETIC_TOKEN,
   authenticate,
+  bearerGetMe,
   pathname,
   persona,
   personaApi,
   personaNav,
   renderApp,
+  waitForTokenForm,
 } from "../test/renderApp";
 
 type ListResult = { items: Persona[]; next_cursor: null };
@@ -102,22 +104,20 @@ test("새 목록 성공 뒤에 도착한 이전 목록 실패는 화면을 바�
 });
 
 test("인증 뒤 401은 토큰 입력값을 포함한 세션을 초기화한다", async () => {
-  const getMe = vi.fn().mockResolvedValue({
-    id: "synthetic-owner",
-    display_name: "합성 사용자",
-  });
+  const getMe = bearerGetMe();
   const listPersonas = vi
     .fn()
     .mockRejectedValue(new ApiError(401, "unauthorized"));
   const { user } = renderApp({ api: personaApi({ getMe, listPersonas }) });
 
-  await user.type(screen.getByLabelText("토큰"), SYNTHETIC_TOKEN);
+  await user.type(await waitForTokenForm(), SYNTHETIC_TOKEN);
   await user.click(screen.getByRole("button", { name: "접속" }));
 
   expect(
     await screen.findByRole("heading", { name: "접속 토큰 입력" }),
   ).toBeInTheDocument();
-  expect(getMe).toHaveBeenCalledTimes(1);
+  // 부트스트랩 프로브(토큰 없음) 1회 + 입력한 토큰 확인 1회.
+  expect(getMe).toHaveBeenCalledTimes(2);
   expect(listPersonas).toHaveBeenCalledTimes(1);
   expect(screen.getByLabelText("토큰")).toHaveValue("");
   expect(pathname()).toBe("/");

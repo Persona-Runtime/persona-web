@@ -18,6 +18,7 @@ import {
   type PersonaApi,
   type PersonaPage,
   type PersonaStatus,
+  type SessionToken,
   type SseCitations,
   type SseDelta,
   type SseDone,
@@ -482,9 +483,20 @@ async function consumeSseStream(
   return { terminal };
 }
 
+/**
+ * 토큰이 있을 때만 Authorization 헤더를 만든다.
+ *
+ * ForwardAuth 경로에서는 앞단이 신원 헤더를 붙여 주므로 브라우저가 실을 토큰이
+ * 없다. 그때 `Bearer `(값 없는 헤더)를 보내면 인증 실패로 읽힐 수 있으므로,
+ * 헤더 자체를 만들지 않는다. 세 요청 함수가 같은 규칙을 쓰도록 한곳에 둔다.
+ */
+function authHeaders(token: SessionToken): Record<string, string> {
+  return token === null ? {} : { Authorization: `Bearer ${token}` };
+}
+
 async function chatCompletionRequest(
   path: string,
-  token: string,
+  token: SessionToken,
   idempotencyKey: string,
   body: Record<string, unknown>,
   onEvent: (event: ChatEvent) => void,
@@ -494,7 +506,7 @@ async function chatCompletionRequest(
     method: "POST",
     signal,
     headers: {
-      Authorization: `Bearer ${token}`,
+      ...authHeaders(token),
       "Content-Type": "application/json",
       "Idempotency-Key": idempotencyKey,
       Accept: "text/event-stream",
@@ -527,13 +539,13 @@ async function chatCompletionRequest(
  */
 async function requestNoContent(
   path: string,
-  token: string,
+  token: SessionToken,
   init: RequestInit = {},
 ): Promise<void> {
   const response = await fetch(path, {
     ...init,
     headers: {
-      Authorization: `Bearer ${token}`,
+      ...authHeaders(token),
       Accept: "application/json",
       ...init.headers,
     },
@@ -543,14 +555,14 @@ async function requestNoContent(
 
 async function request<T>(
   path: string,
-  token: string,
+  token: SessionToken,
   isExpected: (value: unknown) => value is T,
   init: RequestInit = {},
 ): Promise<T> {
   const response = await fetch(path, {
     ...init,
     headers: {
-      Authorization: `Bearer ${token}`,
+      ...authHeaders(token),
       Accept: "application/json",
       ...init.headers,
     },
@@ -586,7 +598,7 @@ export const httpPersonaApi: PersonaApi = {
       body: JSON.stringify({ name }),
     }),
 
-  createDraft: (token, personaId, settings, idempotencyKey, signal) =>
+  createDraft: (token, personaId, body, idempotencyKey, signal) =>
     request(draftPath(personaId), token, isDraft, {
       method: "POST",
       signal,
@@ -594,8 +606,9 @@ export const httpPersonaApi: PersonaApi = {
         "Content-Type": "application/json",
         "Idempotency-Key": idempotencyKey,
       },
-      // 계약은 settings 또는 base_version_id 중 하나만 받는다. 웹은 새로 시작하는 쪽만 쓴다.
-      body: JSON.stringify({ settings }),
+      // 계약은 settings 또는 base_version_id 중 하나만 받는다(oneOf). 호출자가 고른
+      // 쪽을 그대로 싣는다 — 둘을 함께 보내면 서버가 422로 거절한다.
+      body: JSON.stringify(body),
     }),
 
   getDraft: (token, personaId, signal) =>

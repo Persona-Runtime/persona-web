@@ -2,7 +2,16 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      interactive-widget=resizes-content: 가상 키보드가 올라오면 뷰포트 자체를
+      줄여, 하단에 붙인 입력줄이 키보드 뒤로 숨지 않는다(기본값은 뷰포트를
+      그대로 두고 화면만 밀어 올린다).
+      viewport-fit=cover: env(safe-area-inset-bottom)을 쓰려면 필요하다.
+    -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+    />
     <title>Persona Runtime</title>
   </head>
   <body>
