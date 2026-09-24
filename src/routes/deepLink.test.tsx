@@ -25,8 +25,9 @@ test("딥링크로 들어오면 인증을 먼저 요구하고, 인증 뒤 원래
   });
 
   // 토큰은 메모리에만 있으므로 새 탭·새로고침은 항상 접속 화면에서 시작한다.
+  // 폼은 부트스트랩 프로브가 401(=내부 Bearer 경로)로 끝난 뒤에 나타난다.
   expect(
-    screen.getByRole("heading", { name: "접속 토큰 입력" }),
+    await screen.findByRole("heading", { name: "접속 토큰 입력" }),
   ).toBeInTheDocument();
 
   await authenticate(user);

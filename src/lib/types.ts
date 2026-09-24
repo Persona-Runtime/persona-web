@@ -8,6 +8,16 @@ export type PersonaStatus =
 /** 한 번의 조회·전송이 어디까지 진행됐는지. 빈 결과와 오류를 섞지 않으려고 구분한다. */
 export type LoadState = "idle" | "loading" | "ready" | "error";
 
+/**
+ * API 호출에 실을 토큰. `null`은 "토큰을 붙이지 않는다"는 뜻이다.
+ *
+ * ForwardAuth 경로에서는 앞단(oauth2-proxy)이 신원 헤더를 붙여 주므로 브라우저가
+ * 보낼 토큰이 없다. 빈 문자열을 센티널로 쓰지 않는 이유는 `Bearer `처럼 값 없는
+ * 헤더가 실제로 전송되는 것을 타입으로 막기 위해서다 — 구현은 null일 때
+ * Authorization 헤더 자체를 생략한다.
+ */
+export type SessionToken = string | null;
+
 export interface User {
   id: string;
   display_name: string;
@@ -52,6 +62,18 @@ export interface DraftSettings {
   profile: string;
   speech_examples: string;
 }
+
+/**
+ * 초안을 시작하는 두 경로. 계약(service-api-v1.md 5절)의 oneOf 그대로이며
+ * 둘을 함께 보내면 서버가 422로 거절한다.
+ *
+ * - `{ settings }`      — 빈 초안으로 새로 시작한다.
+ * - `{ base_version_id }` — 적용본에서 파생한다. 서버가 그 version의 설정과 자료를
+ *   복사해 새 version을 만든다. 적용본이 있는 캐릭터를 이어서 고칠 때 쓴다.
+ */
+export type CreateDraftBody =
+  | { settings: DraftSettings }
+  | { base_version_id: string };
 
 export interface DraftSource {
   id: string;
@@ -256,28 +278,28 @@ export type ChatCompletionResult =
   | { replayed: false; terminal: boolean };
 
 export interface PersonaApi {
-  getMe(token: string, signal?: AbortSignal): Promise<User>;
-  listPersonas(token: string, signal?: AbortSignal): Promise<PersonaPage>;
+  getMe(token: SessionToken, signal?: AbortSignal): Promise<User>;
+  listPersonas(token: SessionToken, signal?: AbortSignal): Promise<PersonaPage>;
   createPersona(
-    token: string,
+    token: SessionToken,
     name: string,
     idempotencyKey: string,
     signal?: AbortSignal,
   ): Promise<Persona>;
   createDraft(
-    token: string,
+    token: SessionToken,
     personaId: string,
-    settings: DraftSettings,
+    body: CreateDraftBody,
     idempotencyKey: string,
     signal?: AbortSignal,
   ): Promise<Draft>;
   getDraft(
-    token: string,
+    token: SessionToken,
     personaId: string,
     signal?: AbortSignal,
   ): Promise<Draft>;
   patchDraft(
-    token: string,
+    token: SessionToken,
     personaId: string,
     patch: DraftPatch,
     idempotencyKey: string,
@@ -289,33 +311,33 @@ export interface PersonaApi {
    * PATCH의 409 revision_conflict와 코드 문자열이 다르다 — 계약상 의도적 구분이다.
    */
   applyDraft(
-    token: string,
+    token: SessionToken,
     personaId: string,
     expectedRevision: number,
     idempotencyKey: string,
     signal?: AbortSignal,
   ): Promise<DraftApplyAccepted>;
   discardDraft(
-    token: string,
+    token: SessionToken,
     personaId: string,
     idempotencyKey: string,
     signal?: AbortSignal,
   ): Promise<void>;
 
   createConversation(
-    token: string,
+    token: SessionToken,
     personaId: string,
     idempotencyKey: string,
     signal?: AbortSignal,
   ): Promise<Conversation>;
   listConversations(
-    token: string,
+    token: SessionToken,
     personaId: string,
     cursor: string | null,
     signal?: AbortSignal,
   ): Promise<ConversationPage>;
   listMessages(
-    token: string,
+    token: SessionToken,
     conversationId: string,
     cursor: string | null,
     signal?: AbortSignal,
@@ -325,7 +347,7 @@ export interface PersonaApi {
    * 때만 호출된다(replay는 호출 없이 바로 반환).
    */
   startChatCompletion(
-    token: string,
+    token: SessionToken,
     conversationId: string,
     message: string,
     idempotencyKey: string,
@@ -333,12 +355,12 @@ export interface PersonaApi {
     signal?: AbortSignal,
   ): Promise<ChatCompletionResult>;
   cancelGeneration(
-    token: string,
+    token: SessionToken,
     generationId: string,
     signal?: AbortSignal,
   ): Promise<Generation>;
   retryGeneration(
-    token: string,
+    token: SessionToken,
     generationId: string,
     idempotencyKey: string,
     onEvent: (event: ChatEvent) => void,

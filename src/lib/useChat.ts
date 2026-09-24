@@ -11,6 +11,7 @@ import {
   type LoadState,
   type MessageTurn,
   type PersonaApi,
+  type SessionToken,
   type UserMessage,
 } from "./types";
 
@@ -228,7 +229,7 @@ export function useChat(api: PersonaApi, personaId: string): ChatHookState {
   const runStream = useCallback(
     (
       call: (
-        token: string,
+        token: SessionToken,
         onEvent: (event: ChatEvent) => void,
         signal: AbortSignal,
       ) => Promise<ChatCompletionResult>,

@@ -20,12 +20,30 @@ export const persona: Persona = {
   created_at: "2026-09-10T00:00:00Z",
 };
 
+export const SYNTHETIC_USER = {
+  id: "synthetic-owner",
+  display_name: "합성 사용자",
+};
+
+/**
+ * 기본 getMe는 **내부 Bearer 경로**를 흉내 낸다 — 토큰이 없으면 401, 있으면 성공.
+ *
+ * 앱이 시작할 때 토큰 없이 GET /v1/me를 한 번 보내 경로를 판정하므로, 기본값을
+ * 무조건 성공으로 두면 모든 테스트가 자동 로그인 상태로 시작해 토큰 폼을 찾지
+ * 못한다. 이렇게 실제 두 경로와 같은 모양으로 두면 기존 테스트는 그대로 두고,
+ * ForwardAuth를 보려는 테스트만 `getMe`를 성공으로 덮어쓰면 된다.
+ */
+export function bearerGetMe() {
+  return vi.fn((token: string | null) => {
+    if (token === null)
+      return Promise.reject(new ApiError(401, "unauthorized"));
+    return Promise.resolve(SYNTHETIC_USER);
+  });
+}
+
 export function personaApi(overrides: Partial<PersonaApi> = {}): PersonaApi {
   return {
-    getMe: vi.fn().mockResolvedValue({
-      id: "synthetic-owner",
-      display_name: "합성 사용자",
-    }),
+    getMe: bearerGetMe(),
     listPersonas: vi.fn().mockResolvedValue({ items: [], next_cursor: null }),
     createPersona: vi.fn().mockResolvedValue(persona),
     createDraft: vi.fn(),
@@ -85,10 +103,21 @@ export function personaNav() {
   return within(screen.getByRole("navigation", { name: "내 캐릭터" }));
 }
 
+/**
+ * 부트스트랩 프로브가 끝나 토큰 폼이 나타날 때까지 기다린다.
+ *
+ * 앱은 시작할 때 토큰 없이 GET /v1/me를 한 번 보내 경로를 판정하고, 그동안
+ * "확인 중" 자리표시를 그린다. 그래서 렌더 직후에 동기적으로 토큰 폼을 찾으면
+ * 아직 없다. 내부 Bearer 경로를 보는 테스트는 전부 이 지점을 지나야 한다.
+ */
+export async function waitForTokenForm(): Promise<HTMLElement> {
+  return screen.findByLabelText("토큰");
+}
+
 export async function authenticate(
   user: ReturnType<typeof userEvent.setup>,
 ): Promise<void> {
-  await user.type(screen.getByLabelText("토큰"), SYNTHETIC_TOKEN);
+  await user.type(await waitForTokenForm(), SYNTHETIC_TOKEN);
   await user.click(screen.getByRole("button", { name: "접속" }));
   await screen.findByRole("heading", { name: "내 캐릭터" });
 }

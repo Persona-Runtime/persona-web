@@ -234,9 +234,11 @@ describe.skipIf(!live)("실제 Gateway 연동", () => {
       token!,
       createdIds.first,
       {
-        name: "합성 모루",
-        profile: "침착한 도서관 안내자다.",
-        speech_examples: "",
+        settings: {
+          name: "합성 모루",
+          profile: "침착한 도서관 안내자다.",
+          speech_examples: "",
+        },
       },
       key(),
     );
@@ -297,7 +299,13 @@ describe.skipIf(!live)("실제 Gateway 연동", () => {
       httpPersonaApi.createDraft(
         token!,
         createdIds.first,
-        { name: "둘째 초안", profile: "있을 수 없다.", speech_examples: "" },
+        {
+          settings: {
+            name: "둘째 초안",
+            profile: "있을 수 없다.",
+            speech_examples: "",
+          },
+        },
         key(),
       ),
     );

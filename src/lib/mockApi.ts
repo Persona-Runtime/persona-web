@@ -12,6 +12,7 @@ import {
   type Persona,
   type PersonaApi,
   type PersonaPage,
+  type SessionToken,
   type User,
 } from "./types";
 
@@ -68,20 +69,32 @@ export function setMockApplyFail(fail: boolean): void {
   PERSONA_MOCK_APPLY_FAIL = fail;
 }
 
+/**
+ * mock은 내부 Bearer 경로만 흉내 낸다 — 토큰이 없거나 공백이면 401이다.
+ *
+ * ForwardAuth 경로(token === null)를 성공으로 처리하지 않는 이유: mock에는 앞단
+ * 프록시가 없어 "헤더가 붙었다"를 재현할 수 없고, 성공으로 두면 개발자가 mock으로
+ * 보는 화면과 실제 공개 경로의 화면이 달라진다. 부트스트랩 프로브는 mock에서
+ * 401을 받아 토큰 입력창으로 떨어진다 — 지금까지와 같은 동작이다.
+ */
+function requireMockToken(token: SessionToken): void {
+  if (token === null || !token.trim()) throw new ApiError(401, "unauthorized");
+}
+
 export const mockPersonaApi: PersonaApi = {
   async getMe(token, signal) {
     await delay(signal);
-    if (!token.trim()) throw new ApiError(401, "unauthorized");
+    requireMockToken(token);
     return mockUser;
   },
   async listPersonas(token, signal): Promise<PersonaPage> {
     await delay(signal);
-    if (!token.trim()) throw new ApiError(401, "unauthorized");
+    requireMockToken(token);
     return { items: mockPersonas, next_cursor: null };
   },
   async createPersona(token, name, _idempotencyKey, signal) {
     await delay(signal);
-    if (!token.trim()) throw new ApiError(401, "unauthorized");
+    requireMockToken(token);
     if (mockPersonas.length >= 3)
       throw new ApiError(409, "persona_limit_exceeded");
     if (mockPersonas.some((persona) => persona.name === name)) {
@@ -100,10 +113,17 @@ export const mockPersonaApi: PersonaApi = {
     return persona;
   },
 
-  async createDraft(token, personaId, settings, _idempotencyKey, signal) {
+  async createDraft(token, personaId, body, _idempotencyKey, signal) {
     await delay(signal);
-    if (!token.trim()) throw new ApiError(401, "unauthorized");
+    requireMockToken(token);
     if (mockDrafts.has(personaId)) throw new ApiError(409, "draft_exists");
+    // 파생 경로는 서버가 적용본의 설정을 복사한다. mock에는 보관해 둔 적용본이
+    // 없으므로 빈 설정으로 대신한다 — 화면 흐름 확인이 목적이고, 실제 복사 결과는
+    // 실 서버에서만 의미가 있다.
+    const settings =
+      "settings" in body
+        ? body.settings
+        : { name: "", profile: "", speech_examples: "" };
     const draft = mockDraft(personaId, settings);
     mockDrafts.set(personaId, draft);
     return draft;
@@ -111,7 +131,7 @@ export const mockPersonaApi: PersonaApi = {
 
   async getDraft(token, personaId, signal) {
     await delay(signal);
-    if (!token.trim()) throw new ApiError(401, "unauthorized");
+    requireMockToken(token);
     const draft = mockDrafts.get(personaId);
     if (draft === undefined) throw new ApiError(404, "draft_not_found");
     return draft;
@@ -119,7 +139,7 @@ export const mockPersonaApi: PersonaApi = {
 
   async patchDraft(token, personaId, patch, _idempotencyKey, signal) {
     await delay(signal);
-    if (!token.trim()) throw new ApiError(401, "unauthorized");
+    requireMockToken(token);
     const draft = mockDrafts.get(personaId);
     if (draft === undefined) throw new ApiError(404, "draft_not_found");
     // revision CAS. 가짜도 같은 규칙을 지키지 않으면 화면이 낡은 revision을 보내도 통과한다.
@@ -186,7 +206,7 @@ export const mockPersonaApi: PersonaApi = {
     signal,
   ) {
     await delay(signal);
-    if (!token.trim()) throw new ApiError(401, "unauthorized");
+    requireMockToken(token);
     const draft = mockDrafts.get(personaId);
     if (draft === undefined) throw new ApiError(404, "draft_not_found");
     // 진행 중 여부를 revision보다 먼저 본다 — 실 서버가 advisory lock을 revision 검사보다
@@ -242,14 +262,14 @@ export const mockPersonaApi: PersonaApi = {
 
   async discardDraft(token, personaId, _idempotencyKey, signal) {
     await delay(signal);
-    if (!token.trim()) throw new ApiError(401, "unauthorized");
+    requireMockToken(token);
     if (!mockDrafts.delete(personaId))
       throw new ApiError(404, "draft_not_found");
   },
 
   async createConversation(token, personaId, _idempotencyKey, signal) {
     await delay(signal);
-    if (!token.trim()) throw new ApiError(401, "unauthorized");
+    requireMockToken(token);
     const draft = mockDrafts.get(personaId);
     if (draft === undefined || draft.status !== "ready") {
       throw new ApiError(409, "not_indexed");
@@ -277,7 +297,7 @@ export const mockPersonaApi: PersonaApi = {
     signal,
   ): Promise<ConversationPage> {
     await delay(signal);
-    if (!token.trim()) throw new ApiError(401, "unauthorized");
+    requireMockToken(token);
     const items = [...mockConversations.values()]
       .filter((conversation) => conversation.persona_id === personaId)
       .sort((a, b) => b.created_at.localeCompare(a.created_at));
@@ -291,7 +311,7 @@ export const mockPersonaApi: PersonaApi = {
     signal,
   ): Promise<MessagePage> {
     await delay(signal);
-    if (!token.trim()) throw new ApiError(401, "unauthorized");
+    requireMockToken(token);
     return {
       items: mockMessageTurns.get(conversationId) ?? [],
       next_cursor: null,
@@ -306,7 +326,7 @@ export const mockPersonaApi: PersonaApi = {
     onEvent,
     signal,
   ): Promise<ChatCompletionResult> {
-    if (!token.trim()) throw new ApiError(401, "unauthorized");
+    requireMockToken(token);
     const conversation = mockConversations.get(conversationId);
     if (conversation === undefined)
       throw new ApiError(404, "conversation_not_found");
@@ -315,7 +335,7 @@ export const mockPersonaApi: PersonaApi = {
 
   async cancelGeneration(token, generationId, signal): Promise<Generation> {
     await delay(signal);
-    if (!token.trim()) throw new ApiError(401, "unauthorized");
+    requireMockToken(token);
     // mock 스트림은 delay()만으로 끝나 취소 시점에 가로챌 실제 스트림이 없다 —
     // 합성 응답이므로 이미 끝났다고 보고 그대로 완료 상태를 돌려준다.
     for (const turns of mockMessageTurns.values()) {
@@ -334,7 +354,7 @@ export const mockPersonaApi: PersonaApi = {
     onEvent,
     signal,
   ): Promise<ChatCompletionResult> {
-    if (!token.trim()) throw new ApiError(401, "unauthorized");
+    requireMockToken(token);
     for (const [conversationId, turns] of mockMessageTurns) {
       for (const turn of turns) {
         const original = turn.generations.find((g) => g.id === generationId);

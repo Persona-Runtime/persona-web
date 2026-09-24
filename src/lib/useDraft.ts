@@ -93,7 +93,9 @@ export function useDraft(
           api.createDraft(
             token,
             personaId,
-            { name: personaName, profile: "", speech_examples: "" },
+            {
+              settings: { name: personaName, profile: "", speech_examples: "" },
+            },
             crypto.randomUUID(),
             signal,
           ),

@@ -8,6 +8,7 @@ import {
 } from "react";
 import { isAbort, messageFor } from "../lib/personaCopy";
 import {
+  type AuthMode,
   type AuthState,
   type RequestOutcome,
   SessionContext,
@@ -33,6 +34,13 @@ export function SessionProvider({
   const [authState, setAuthState] = useState<AuthState>("idle");
   const [authError, setAuthError] = useState<string | null>(null);
   const [hasAuthenticated, setHasAuthenticated] = useState(false);
+  // 시작은 항상 probing이다. 판정 전에 토큰 화면을 그리면 ForwardAuth 경로에서
+  // 입력창이 한 프레임 깜빡이고, 딥링크는 RequireSession에 의해 "/"로 튕긴다.
+  const [authMode, setAuthMode] = useState<AuthMode>("probing");
+  const [probeError, setProbeError] = useState<string | null>(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  // 프로브를 다시 돌리기 위한 값. 재시도 버튼이 증가시킨다.
+  const [probeAttempt, setProbeAttempt] = useState(0);
 
   // 토큰은 이 클로저 밖으로 나가지 않는다. 계약상 브라우저 저장소·URL·로그에 남기지
   // 않으므로 state로 노출하지 않고 ref에만 둔다. 새로고침하면 사라져 재입력이 필요하다.
@@ -59,13 +67,53 @@ export function SessionProvider({
     setAuthError(null);
   }, [abortAll]);
 
+  /**
+   * 앱 시작 시 **토큰 없이** GET /v1/me를 한 번 보내 어느 경로인지 판정한다.
+   *
+   * 200이면 앞단이 신원을 붙여 주는 ForwardAuth 경로이므로 토큰을 받지 않는다.
+   * 401이면 gateway가 Bearer를 요구하는 내부 경로다. 그 외(5xx·네트워크 오류·
+   * 계약과 다른 200·Traefik 없이 뜬 nginx의 404)는 판정 자체를 못 한 것이므로
+   * 토큰 입력창을 띄우지 않고 재시도를 안내한다 — 서버가 잠시 이상한 것을
+   * "토큰을 안 넣었다"로 오해시키지 않기 위해서다.
+   */
+  useEffect(() => {
+    const controller = new AbortController();
+    let cancelled = false;
+    setAuthMode("probing");
+    setProbeError(null);
+
+    void (async () => {
+      try {
+        const probed = await api.getMe(null, controller.signal);
+        if (cancelled) return;
+        setUser(probed);
+        setAuthMode("forward");
+        setAuthState("ready");
+      } catch (error) {
+        if (cancelled || isAbort(error)) return;
+        setAuthMode("bearer");
+        if (error instanceof ApiError && error.status === 401) return;
+        setProbeError(messageFor(error));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [api, probeAttempt]);
+
+  const retryProbe = useCallback(() => setProbeAttempt((n) => n + 1), []);
+
   const request = useCallback(
     async <T,>(
-      call: (token: string, signal: AbortSignal) => Promise<T>,
+      call: (token: string | null, signal: AbortSignal) => Promise<T>,
     ): Promise<RequestOutcome<T>> => {
       const token = tokenRef.current;
-      // 로그아웃 직후 출발한 호출은 보낼 토큰이 없다. 익명 요청을 만들지 않는다.
-      if (token === null) return { status: "stale" };
+      // ForwardAuth 경로에는 실을 토큰이 없다. 여기서 막으면 모든 호출이 조용히
+      // stale이 되어 화면이 로딩 상태로 굳는다(오류조차 뜨지 않는다).
+      // 그 외의 경로에서 토큰이 없다는 것은 로그아웃 직후 출발한 호출이라는 뜻이다.
+      if (token === null && authMode !== "forward") return { status: "stale" };
 
       const epoch = sessionEpoch.current;
       const controller = new AbortController();
@@ -78,9 +126,16 @@ export function SessionProvider({
         if (isAbort(error) || sessionEpoch.current !== epoch) {
           return { status: "stale" };
         }
-        // 인증 이후의 401은 토큰이 더는 유효하지 않다는 뜻이므로 세션을 정리한다.
-        // 인증 단계의 401과 달리 다시 입력하라고 안내할 화면이 이미 지나갔다.
         if (error instanceof ApiError && error.status === 401) {
+          // ForwardAuth 경로의 401은 앞단 세션(oauth2-proxy 쿠키)이 만료됐다는
+          // 뜻이다. 붙여넣을 Bearer 토큰이 없는 사용자에게 입력창을 띄우는 것은
+          // 잘못된 안내이므로, 로그아웃 대신 재로그인을 안내한다.
+          if (authMode === "forward") {
+            setSessionExpired(true);
+            return { status: "stale" };
+          }
+          // 내부 경로의 401은 토큰이 더는 유효하지 않다는 뜻이므로 세션을 정리한다.
+          // 인증 단계의 401과 달리 다시 입력하라고 안내할 화면이 이미 지나갔다.
           logout();
           return { status: "stale" };
         }
@@ -89,7 +144,7 @@ export function SessionProvider({
         controllers.current.delete(controller);
       }
     },
-    [logout],
+    [authMode, logout],
   );
 
   /**
@@ -140,6 +195,10 @@ export function SessionProvider({
       authState,
       authError,
       hasAuthenticated,
+      authMode,
+      probeError,
+      sessionExpired,
+      retryProbe,
       authenticate,
       logout,
       request,
@@ -149,6 +208,10 @@ export function SessionProvider({
       authState,
       authError,
       hasAuthenticated,
+      authMode,
+      probeError,
+      sessionExpired,
+      retryProbe,
       authenticate,
       logout,
       request,
