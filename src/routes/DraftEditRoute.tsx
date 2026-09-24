@@ -45,7 +45,12 @@ export function DraftEditRoute() {
       </Link>
     </>
   ) : (
-    <DraftEditForm api={api} personaId={personaId} personaName={persona.name} />
+    <DraftEditForm
+      api={api}
+      personaId={personaId}
+      personaName={persona.name}
+      activeVersionId={persona.active_version_id}
+    />
   );
 }
 
@@ -53,13 +58,16 @@ function DraftEditForm({
   api,
   personaId,
   personaName,
+  activeVersionId,
 }: {
   api: ReturnType<typeof useStudio>["api"];
   personaId: string;
   personaName: string;
+  activeVersionId: string | null;
 }) {
   const draftState = useDraft(api, personaId, personaName);
-  const { state, draft, loadError, reload } = draftState;
+  const { state, draft, loadError, reload, notStarted, startFromActive } =
+    draftState;
 
   const [name, setName] = useState(personaName);
   const [profile, setProfile] = useState("");
@@ -95,6 +103,26 @@ function DraftEditForm({
       setShowOptional(true);
     }
   }, [draft]);
+
+  // 적용본은 있는데 초안 슬롯이 비어 있다(활성화 직후). 실패가 아니라 다음 행동이
+  // 정해져 있는 상태이므로, "다시 조회"가 아니라 새 초안을 시작하게 안내한다.
+  if (notStarted && activeVersionId !== null) {
+    return (
+      <>
+        <WorkspaceHeading id="workspace-title">
+          {personaName} — 자료 편집
+        </WorkspaceHeading>
+        <p className="guide">
+          적용된 자료는 바로 고칠 수 없습니다. 새 초안을 시작하면 지금 적용된
+          내용을 그대로 이어받아 고칠 수 있고, 적용본은 새 초안을 활성화할
+          때까지 그대로 쓰입니다.
+        </p>
+        <button type="button" onClick={() => startFromActive(activeVersionId)}>
+          새 초안 만들기
+        </button>
+      </>
+    );
+  }
 
   if (state === "error") {
     return (

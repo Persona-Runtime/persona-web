@@ -22,6 +22,13 @@ export interface DraftHookState {
   draft: Draft | null;
   loadError: string | null;
   reload: () => void;
+  /**
+   * true면 적용본은 있는데 초안 슬롯이 비었다(409 draft_not_started) — 활성화 직후의
+   * 정상 상태다. 화면은 "다시 조회"가 아니라 "새 초안 만들기"를 안내해야 한다.
+   */
+  notStarted: boolean;
+  /** 적용본에서 파생한 새 초안을 시작한다. notStarted일 때만 의미가 있다. */
+  startFromActive: (baseVersionId: string) => void;
 
   saveState: LoadState;
   saveError: string | null;
@@ -68,12 +75,17 @@ export function useDraft(
   const [saveConflict, setSaveConflict] = useState(false);
   const [applyState, setApplyState] = useState<LoadState>("idle");
   const [applyError, setApplyError] = useState<string | null>(null);
+  // 적용본은 있는데 초안 슬롯이 비었다(409 draft_not_started). 오류가 아니라
+  // "새 초안을 시작하면 이어서 고칠 수 있다"는 상태이므로 따로 들고 있는다 —
+  // saveConflict(revision_conflict)와 같은 방식이다.
+  const [notStarted, setNotStarted] = useState(false);
   const latestLoad = useRef(0);
 
   const reload = useCallback(() => {
     const loadId = ++latestLoad.current;
     setState("loading");
     setLoadError(null);
+    setNotStarted(false);
     void request((token, signal) =>
       api.getDraft(token, personaId, signal),
     ).then((outcome) => {
@@ -112,10 +124,58 @@ export function useDraft(
         });
         return;
       }
+      // 활성화 직후의 정상 상태다. 화면이 "새 초안 만들기"를 안내할 수 있도록
+      // 실패 문구만 띄우지 않고 이 사실을 따로 알린다.
+      if (
+        outcome.error instanceof ApiError &&
+        outcome.error.code === "draft_not_started"
+      ) {
+        setNotStarted(true);
+        setLoadError(messageFor(outcome.error));
+        setState("error");
+        return;
+      }
       setLoadError(messageFor(outcome.error));
       setState("error");
     });
   }, [api, personaId, personaName, request]);
+
+  /**
+   * 적용본에서 파생한 새 초안을 시작한다.
+   *
+   * base_version_id 경로를 쓰는 이유: 적용본의 설정과 자료를 서버가 복사해 주므로
+   * 사용자가 "지금 적용된 내용"을 이어서 고칠 수 있다. 빈 초안으로 시작하면 이미
+   * 적용한 자료를 다시 붙여넣어야 한다. 적용본의 version 행·색인 조각은 그대로
+   * 남으므로 진행 중인 대화도 끊기지 않는다.
+   */
+  const startFromActive = useCallback(
+    (baseVersionId: string) => {
+      const loadId = ++latestLoad.current;
+      setState("loading");
+      setLoadError(null);
+      setNotStarted(false);
+      void request((token, signal) =>
+        api.createDraft(
+          token,
+          personaId,
+          { base_version_id: baseVersionId },
+          crypto.randomUUID(),
+          signal,
+        ),
+      ).then((outcome) => {
+        if (latestLoad.current !== loadId) return;
+        if (outcome.status === "stale") return;
+        if (outcome.status === "failed") {
+          setLoadError(messageFor(outcome.error));
+          setState("error");
+          return;
+        }
+        setDraft(outcome.value);
+        setState("ready");
+      });
+    },
+    [api, personaId, request],
+  );
 
   useEffect(() => {
     reload();
@@ -223,6 +283,8 @@ export function useDraft(
     draft,
     loadError,
     reload,
+    notStarted,
+    startFromActive,
     saveState,
     saveError,
     saveConflict,

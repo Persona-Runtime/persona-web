@@ -45,6 +45,15 @@ export function messageFor(error: unknown): string {
       return "색인할 자료가 없습니다. 본문이나 대사를 먼저 입력해주세요.";
     case "draft_not_found":
       return "초안을 찾을 수 없습니다. 화면을 새로고침해주세요.";
+    // 적용본은 있는데 초안 슬롯이 비어 있다 — 활성화 직후의 **정상** 상태다.
+    // draft_not_found(404)와 달리 되돌릴 수 있는 상황이므로, 실패가 아니라
+    // "새 초안을 시작하면 이어서 고칠 수 있다"로 안내한다.
+    case "draft_not_started":
+      return "적용된 자료는 바로 고칠 수 없습니다. 새 초안을 시작하면 지금 적용된 내용을 이어서 고칠 수 있습니다.";
+    // 색인이 끝나지 않았거나, 색인 뒤 자료를 더 고쳐 indexed_revision이 뒤처졌다.
+    // 그대로 활성화하면 방금 고친 내용이 빠진 색인이 적용본이 된다.
+    case "not_activatable":
+      return "아직 활성화할 수 없습니다. 지금 내용으로 색인을 먼저 끝내주세요.";
     case "not_indexed":
       return "아직 색인된 자료가 없습니다. 자료를 적용한 뒤 다시 시도해주세요.";
     case "schema_not_ready":

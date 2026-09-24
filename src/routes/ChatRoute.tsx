@@ -4,7 +4,6 @@ import { RetryNotice } from "../components/RetryNotice";
 import { WorkspaceHeading } from "../components/WorkspaceHeading";
 import { useStudio } from "../lib/studioContext";
 import { useChat } from "../lib/useChat";
-import { useDraft } from "../lib/useDraft";
 import type { Generation, MessageTurn } from "../lib/types";
 
 const MAX_MESSAGE_CHARS = 2000;
@@ -34,7 +33,12 @@ export function ChatRoute() {
   }
 
   return (
-    <ChatScreen api={api} personaId={personaId} personaName={persona.name} />
+    <ChatScreen
+      api={api}
+      personaId={personaId}
+      personaName={persona.name}
+      activeVersionId={persona.active_version_id}
+    />
   );
 }
 
@@ -110,29 +114,21 @@ function ChatScreen({
   api,
   personaId,
   personaName,
+  activeVersionId,
 }: {
   api: ReturnType<typeof useStudio>["api"];
   personaId: string;
   personaName: string;
+  activeVersionId: string | null;
 }) {
-  const { state: draftState, draft } = useDraft(api, personaId, personaName);
   const chat = useChat(api, personaId);
   const [input, setInput] = useState("");
 
-  if (draftState === "loading" || draftState === "idle") {
-    return (
-      <>
-        <WorkspaceHeading id="workspace-title">
-          {personaName} — 대화
-        </WorkspaceHeading>
-        <p className="guide" role="status">
-          상태를 확인하는 중입니다…
-        </p>
-      </>
-    );
-  }
-
-  if (draft === null || draft.status !== "ready") {
+  // 대화 가능 여부는 **적용본**이 정한다. 초안 상태로 판정하면 안 된다 — 활성화하면
+  // 초안 슬롯이 비어 getDraft가 409 draft_not_started를 돌려주므로, 정상적으로
+  // 자료를 적용한 캐릭터일수록 대화가 막힌다. 서버도 같은 기준이다: 대화 생성은
+  // 적용본이 없으면 409 no_active_version이다(계약 §7).
+  if (activeVersionId === null) {
     return (
       <>
         <WorkspaceHeading id="workspace-title">

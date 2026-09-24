@@ -1,6 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
-import { ApiError, type Draft } from "../lib/types";
+import { ApiError, type Draft, type PersonaApi } from "../lib/types";
 import {
   authenticate,
   persona,
@@ -343,4 +343,103 @@ test("failed 상태에서도 이전에 성공한 indexed_revision은 그대로 �
     "색인할 자료가 없습니다. 본문이나 대사를 먼저 입력해주세요.",
   );
   expect(screen.getByText(/rev 3/)).toBeInTheDocument();
+});
+
+/**
+ * 적용본은 있는데 초안 슬롯이 비어 있는 상태(409 draft_not_started).
+ *
+ * 활성화하면 서버가 초안 포인터를 비우므로 정상적인 사용 흐름에서 반드시 지나가는
+ * 상태다. 실패가 아니라 다음 행동이 정해져 있으므로, 화면은 "다시 조회"가 아니라
+ * 새 초안을 시작하게 안내해야 한다.
+ */
+const activatedPersona = {
+  ...persona,
+  status: "ready" as const,
+  active_version_id: "90000000-0000-4000-8000-000000000001",
+};
+
+function activatedApi(overrides: Partial<PersonaApi> = {}) {
+  return personaApi({
+    listPersonas: vi
+      .fn()
+      .mockResolvedValue({ items: [activatedPersona], next_cursor: null }),
+    getDraft: vi.fn().mockRejectedValue(new ApiError(409, "draft_not_started")),
+    ...overrides,
+  });
+}
+
+test("409 draft_not_started면 재조회가 아니라 새 초안 만들기를 안내한다", async () => {
+  const { user } = renderApp({ api: activatedApi() });
+
+  await openDraftScreen(user);
+
+  expect(
+    screen.getByRole("button", { name: "새 초안 만들기" }),
+  ).toBeInTheDocument();
+  // 되돌릴 수 없는 실패처럼 보이면 안 된다.
+  expect(screen.queryByRole("button", { name: "다시 조회" })).toBeNull();
+});
+
+test("새 초안 만들기는 적용본에서 파생한다(base_version_id)", async () => {
+  // 빈 초안으로 시작하면 이미 적용한 자료를 다시 붙여넣어야 한다. 서버가 적용본의
+  // 설정·자료를 복사해 주는 파생 경로를 쓴다.
+  const createDraft = vi.fn().mockResolvedValue(editingDraft);
+  const { user } = renderApp({ api: activatedApi({ createDraft }) });
+
+  await openDraftScreen(user);
+  await user.click(screen.getByRole("button", { name: "새 초안 만들기" }));
+
+  await screen.findByLabelText("기본 소개");
+  expect(createDraft).toHaveBeenCalledTimes(1);
+  expect(createDraft).toHaveBeenCalledWith(
+    expect.anything(),
+    activatedPersona.id,
+    { base_version_id: activatedPersona.active_version_id },
+    expect.any(String),
+    expect.anything(),
+  );
+});
+
+test("활성화 전 색인이 안 끝났으면 409 not_activatable 문구를 보여준다", async () => {
+  const applyDraft = vi
+    .fn()
+    .mockRejectedValue(new ApiError(409, "not_activatable"));
+  const { user } = renderApp({
+    api: personaApi({
+      listPersonas: vi
+        .fn()
+        .mockResolvedValue({ items: [persona], next_cursor: null }),
+      getDraft: vi.fn().mockResolvedValue(draftWithSource),
+      applyDraft,
+    }),
+  });
+
+  await openDraftScreen(user);
+  await user.click(screen.getByRole("button", { name: "색인" }));
+
+  await screen.findByText(
+    "아직 활성화할 수 없습니다. 지금 내용으로 색인을 먼저 끝내주세요.",
+  );
+});
+
+test("409 schema_not_ready는 초안 시작 안내와 섞이지 않는다", async () => {
+  // 코드마다 원인이 다르다 — schema_not_ready는 잠시 뒤 재시도할 일이고,
+  // draft_not_started는 사용자가 새 초안을 시작해야 하는 일이다.
+  const { user } = renderApp({
+    api: personaApi({
+      listPersonas: vi
+        .fn()
+        .mockResolvedValue({ items: [activatedPersona], next_cursor: null }),
+      getDraft: vi
+        .fn()
+        .mockRejectedValue(new ApiError(409, "schema_not_ready")),
+    }),
+  });
+
+  await openDraftScreen(user);
+
+  await screen.findByText(
+    "아직 이 기능을 쓸 수 없습니다. 잠시 후 다시 시도해주세요.",
+  );
+  expect(screen.queryByRole("button", { name: "새 초안 만들기" })).toBeNull();
 });

@@ -1,6 +1,12 @@
 import { screen, waitFor } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
-import type { ChatEvent, Conversation, Draft, Generation } from "../lib/types";
+import {
+  ApiError,
+  type ChatEvent,
+  type Conversation,
+  type Draft,
+  type Generation,
+} from "../lib/types";
 import {
   authenticate,
   persona,
@@ -25,6 +31,17 @@ const baseDraft: Draft = {
   indexed_revision: null,
   indexed_at: null,
   error_code: null,
+};
+
+/**
+ * 자료를 적용(활성화)한 캐릭터. 대화 가능 여부는 초안이 아니라 이 값이 정한다 —
+ * 활성화하면 초안 슬롯이 비어 getDraft가 409 draft_not_started를 돌려주므로,
+ * 초안으로 판정하면 정상적으로 적용한 캐릭터일수록 대화가 막힌다.
+ */
+const activatedPersona = {
+  ...persona,
+  status: "ready" as const,
+  active_version_id: "10000000-0000-4000-8000-000000000001",
 };
 
 const conversation: Conversation = {
@@ -71,9 +88,10 @@ function streamingApi(events: ChatEvent[]) {
   );
 }
 
-test("상태가 ready가 아니면 자료를 먼저 적용하라고 안내한다", async () => {
+test("적용본이 없으면 자료를 먼저 적용하라고 안내한다", async () => {
   const { user } = renderApp({
     api: personaApi({
+      // active_version_id가 null인 캐릭터다.
       listPersonas: vi
         .fn()
         .mockResolvedValue({ items: [persona], next_cursor: null }),
@@ -95,7 +113,7 @@ test("자료가 준비되면 기존 대화를 불러와 메시지 입력창을 �
     api: personaApi({
       listPersonas: vi
         .fn()
-        .mockResolvedValue({ items: [persona], next_cursor: null }),
+        .mockResolvedValue({ items: [activatedPersona], next_cursor: null }),
       getDraft: vi.fn().mockResolvedValue({ ...baseDraft, status: "ready" }),
       listConversations: vi
         .fn()
@@ -152,7 +170,7 @@ test("메시지를 보내면 SSE 이벤트 순서대로 답변이 누적되고 c
     api: personaApi({
       listPersonas: vi
         .fn()
-        .mockResolvedValue({ items: [persona], next_cursor: null }),
+        .mockResolvedValue({ items: [activatedPersona], next_cursor: null }),
       getDraft: vi.fn().mockResolvedValue({ ...baseDraft, status: "ready" }),
       listConversations: vi
         .fn()
@@ -206,7 +224,7 @@ test("스트림이 error로 끝나면 실패 안내와 다시 시도 버튼을 �
     api: personaApi({
       listPersonas: vi
         .fn()
-        .mockResolvedValue({ items: [persona], next_cursor: null }),
+        .mockResolvedValue({ items: [activatedPersona], next_cursor: null }),
       getDraft: vi.fn().mockResolvedValue({ ...baseDraft, status: "ready" }),
       listConversations: vi
         .fn()
@@ -251,7 +269,7 @@ test("Idempotency-Key 재전송(JSON replay)은 스트림 없이 현재 저장 �
     api: personaApi({
       listPersonas: vi
         .fn()
-        .mockResolvedValue({ items: [persona], next_cursor: null }),
+        .mockResolvedValue({ items: [activatedPersona], next_cursor: null }),
       getDraft: vi.fn().mockResolvedValue({ ...baseDraft, status: "ready" }),
       listConversations: vi
         .fn()
@@ -333,7 +351,7 @@ test("스트리밍 중에는 취소 버튼이 보이고 누르면 cancel API를 
     api: personaApi({
       listPersonas: vi
         .fn()
-        .mockResolvedValue({ items: [persona], next_cursor: null }),
+        .mockResolvedValue({ items: [activatedPersona], next_cursor: null }),
       getDraft: vi.fn().mockResolvedValue({ ...baseDraft, status: "ready" }),
       listConversations: vi
         .fn()
@@ -374,7 +392,7 @@ test("cancel 응답이 cancel_requested(아직 미확정)면 turns로 확정하�
     api: personaApi({
       listPersonas: vi
         .fn()
-        .mockResolvedValue({ items: [persona], next_cursor: null }),
+        .mockResolvedValue({ items: [activatedPersona], next_cursor: null }),
       getDraft: vi.fn().mockResolvedValue({ ...baseDraft, status: "ready" }),
       listConversations: vi
         .fn()
@@ -442,7 +460,7 @@ async function runEofReconcileCase(
     api: personaApi({
       listPersonas: vi
         .fn()
-        .mockResolvedValue({ items: [persona], next_cursor: null }),
+        .mockResolvedValue({ items: [activatedPersona], next_cursor: null }),
       getDraft: vi.fn().mockResolvedValue({ ...baseDraft, status: "ready" }),
       listConversations: vi
         .fn()
@@ -531,7 +549,7 @@ test("delta가 meta보다 먼저 오면 크래시 없이 무시된다", async ()
     api: personaApi({
       listPersonas: vi
         .fn()
-        .mockResolvedValue({ items: [persona], next_cursor: null }),
+        .mockResolvedValue({ items: [activatedPersona], next_cursor: null }),
       getDraft: vi.fn().mockResolvedValue({ ...baseDraft, status: "ready" }),
       listConversations: vi
         .fn()
@@ -587,7 +605,7 @@ test("meta 이후 다른 generation_id의 이벤트는 무시된다", async () =
     api: personaApi({
       listPersonas: vi
         .fn()
-        .mockResolvedValue({ items: [persona], next_cursor: null }),
+        .mockResolvedValue({ items: [activatedPersona], next_cursor: null }),
       getDraft: vi.fn().mockResolvedValue({ ...baseDraft, status: "ready" }),
       listConversations: vi
         .fn()
@@ -637,7 +655,7 @@ test("중복 terminal 이벤트(done 두 번)는 두 번째가 무시된다", as
     api: personaApi({
       listPersonas: vi
         .fn()
-        .mockResolvedValue({ items: [persona], next_cursor: null }),
+        .mockResolvedValue({ items: [activatedPersona], next_cursor: null }),
       getDraft: vi.fn().mockResolvedValue({ ...baseDraft, status: "ready" }),
       listConversations: vi
         .fn()
@@ -683,7 +701,7 @@ test("meta가 확정한 user_message_id·assistant_message_id를 그대로 쓴�
     api: personaApi({
       listPersonas: vi
         .fn()
-        .mockResolvedValue({ items: [persona], next_cursor: null }),
+        .mockResolvedValue({ items: [activatedPersona], next_cursor: null }),
       getDraft: vi.fn().mockResolvedValue({ ...baseDraft, status: "ready" }),
       listConversations: vi
         .fn()
@@ -709,4 +727,32 @@ test("meta가 확정한 user_message_id·assistant_message_id를 그대로 쓴�
     "data-assistant-message-id",
     "server-assistant-msg-id",
   );
+});
+
+test("활성화 뒤 초안이 없어도 대화 화면이 열린다", async () => {
+  // 회귀 방지: 예전에는 대화 가능 여부를 초안 상태로 판정해서, 자료 입력 → 색인 →
+  // 활성화의 정상 경로를 밟은 캐릭터일수록 대화가 막혔다(활성화하면 초안 슬롯이
+  // 비어 getDraft가 409 draft_not_started를 돌려준다).
+  const getDraft = vi
+    .fn()
+    .mockRejectedValue(new ApiError(409, "draft_not_started"));
+  const { user } = renderApp({
+    api: personaApi({
+      listPersonas: vi
+        .fn()
+        .mockResolvedValue({ items: [activatedPersona], next_cursor: null }),
+      getDraft,
+      listConversations: vi
+        .fn()
+        .mockResolvedValue({ items: [conversation], next_cursor: null }),
+      listMessages: vi.fn().mockResolvedValue({ items: [], next_cursor: null }),
+    }),
+  });
+
+  await openChatScreen(user);
+
+  expect(await screen.findByLabelText("메시지")).toBeInTheDocument();
+  expect(screen.queryByText("자료를 먼저 적용하세요.")).toBeNull();
+  // 대화 화면은 초안을 읽을 이유가 없다.
+  expect(getDraft).not.toHaveBeenCalled();
 });
