@@ -65,7 +65,7 @@ function DraftEditForm({
   personaName: string;
   activeVersionId: string | null;
 }) {
-  const draftState = useDraft(api, personaId, personaName);
+  const draftState = useDraft(api, personaId);
   const { state, draft, loadError, reload, notStarted, startFromActive } =
     draftState;
 
@@ -133,6 +133,24 @@ function DraftEditForm({
         <RetryNotice
           message={loadError ?? "초안을 불러오지 못했습니다."}
           onRetry={reload}
+        />
+      </>
+    );
+  }
+
+  // 초안이 아직 없다. 빈 소개로 자동 생성하지 않고 사용자가 이름·소개를 먼저
+  // 입력하게 한다 — Gateway가 둘 다 필수로 검증하기 때문이다.
+  if (draftState.needsInitialDraft) {
+    return (
+      <>
+        <WorkspaceHeading id="workspace-title">
+          {personaName} — 자료 편집
+        </WorkspaceHeading>
+        <InitialDraftForm
+          defaultName={personaName}
+          createState={draftState.createState}
+          createError={draftState.createError}
+          onCreate={draftState.createInitial}
         />
       </>
     );
@@ -323,5 +341,74 @@ function DraftEditForm({
           : "색인"}
       </button>
     </>
+  );
+}
+
+/**
+ * 첫 초안을 만들기 전에 이름·기본 소개를 받는 폼.
+ *
+ * 둘 다 비공백이고 소개가 PROFILE_MAX 이하일 때만 저장을 허용한다. 이 검사는 안내용이며
+ * 최종 검증은 Gateway가 한다(422 invalid_settings·settings_too_large). 저장이 성공하면
+ * 상위 화면이 기존 편집 폼으로 바뀌고, 그 폼이 새 초안의 값으로 채워진다.
+ */
+function InitialDraftForm({
+  defaultName,
+  createState,
+  createError,
+  onCreate,
+}: {
+  defaultName: string;
+  createState: ReturnType<typeof useDraft>["createState"];
+  createError: string | null;
+  onCreate: (settings: { name: string; profile: string }) => void;
+}) {
+  const [name, setName] = useState(defaultName);
+  const [profile, setProfile] = useState("");
+
+  const profileLen = codePointLength(profile);
+  const canCreate =
+    name.trim() !== "" &&
+    profile.trim() !== "" &&
+    profileLen <= PROFILE_MAX &&
+    createState !== "loading";
+
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canCreate) return;
+    onCreate({ name: name.trim(), profile });
+  };
+
+  return (
+    <form onSubmit={submit}>
+      <p className="guide">
+        아직 초안이 없습니다. 이름과 기본 소개를 입력하고 저장하면 초안이
+        만들어지고, 이어서 본문·대사를 붙여넣을 수 있습니다.
+      </p>
+
+      <label htmlFor="initial-name">이름</label>
+      <input
+        id="initial-name"
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+      />
+
+      <label htmlFor="initial-profile">기본 소개</label>
+      <textarea
+        id="initial-profile"
+        value={profile}
+        onChange={(event) => setProfile(event.target.value)}
+      />
+      <CharCounter length={profileLen} max={PROFILE_MAX} blocking />
+
+      {createError !== null && (
+        <div className="error" role="alert">
+          <p>{createError}</p>
+        </div>
+      )}
+
+      <button type="submit" disabled={!canCreate}>
+        {createState === "loading" ? "초안 만드는 중…" : "초안 만들기"}
+      </button>
+    </form>
   );
 }

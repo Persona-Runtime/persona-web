@@ -443,3 +443,108 @@ test("409 schema_not_ready는 초안 시작 안내와 섞이지 않는다", asyn
   );
   expect(screen.queryByRole("button", { name: "새 초안 만들기" })).toBeNull();
 });
+
+/**
+ * 초안이 아직 한 번도 만들어지지 않은 캐릭터(404 draft_not_found).
+ *
+ * Gateway는 settings 경로에서 비공백 이름·소개를 요구하므로, 화면은 빈 소개로 생성
+ * API를 자동 호출하지 않고 사용자가 입력한 값으로만 초안을 만들어야 한다.
+ */
+function noDraftApi(overrides: Partial<PersonaApi> = {}) {
+  return personaApi({
+    listPersonas: vi
+      .fn()
+      .mockResolvedValue({ items: [persona], next_cursor: null }),
+    getDraft: vi.fn().mockRejectedValue(new ApiError(404, "draft_not_found")),
+    ...overrides,
+  });
+}
+
+test("초안이 없으면 생성 API를 자동 호출하지 않고 이름·소개 입력 폼을 보여준다", async () => {
+  const createDraft = vi.fn();
+  const { user } = renderApp({ api: noDraftApi({ createDraft }) });
+
+  await openDraftScreen(user);
+
+  // 이름은 캐릭터 이름으로 미리 채우고, 소개는 사용자가 직접 입력해야 한다.
+  expect(await screen.findByLabelText("이름")).toHaveValue(persona.name);
+  expect(screen.getByLabelText("기본 소개")).toHaveValue("");
+  expect(screen.getByRole("button", { name: "초안 만들기" })).toBeDisabled();
+  // 일반 오류 화면이 아니다.
+  expect(screen.queryByRole("button", { name: "다시 조회" })).toBeNull();
+  expect(createDraft).not.toHaveBeenCalled();
+});
+
+test("공백뿐인 소개로는 초안을 만들 수 없다", async () => {
+  const createDraft = vi.fn();
+  const { user } = renderApp({ api: noDraftApi({ createDraft }) });
+
+  await openDraftScreen(user);
+  await user.type(await screen.findByLabelText("기본 소개"), "   ");
+
+  expect(screen.getByRole("button", { name: "초안 만들기" })).toBeDisabled();
+  expect(createDraft).not.toHaveBeenCalled();
+});
+
+test("초안 없음 → 입력 폼 → 소개 입력 → 생성 성공이면 편집 폼으로 넘어간다", async () => {
+  const createdDraft: Draft = {
+    ...editingDraft,
+    settings: {
+      name: persona.name,
+      profile: "합성 소개 — 가상 캐릭터",
+      speech_examples: "",
+    },
+  };
+  const createDraft = vi.fn().mockResolvedValue(createdDraft);
+  const { user } = renderApp({ api: noDraftApi({ createDraft }) });
+
+  await openDraftScreen(user);
+  await user.type(
+    await screen.findByLabelText("기본 소개"),
+    "합성 소개 — 가상 캐릭터",
+  );
+  await user.click(screen.getByRole("button", { name: "초안 만들기" }));
+
+  // 생성 뒤에는 기존 편집 폼이 새 초안 값으로 채워진다.
+  expect(await screen.findByLabelText(/본문/)).toBeInTheDocument();
+  expect(screen.getByLabelText("기본 소개")).toHaveValue(
+    "합성 소개 — 가상 캐릭터",
+  );
+  expect(createDraft).toHaveBeenCalledTimes(1);
+  expect(createDraft).toHaveBeenCalledWith(
+    expect.anything(),
+    persona.id,
+    {
+      settings: {
+        name: persona.name,
+        profile: "합성 소개 — 가상 캐릭터",
+        speech_examples: "",
+      },
+    },
+    expect.any(String),
+    expect.anything(),
+  );
+});
+
+test("초안 생성이 422 invalid_settings면 이름·소개 확인을 안내하고 입력을 유지한다", async () => {
+  const createDraft = vi
+    .fn()
+    .mockRejectedValue(new ApiError(422, "invalid_settings"));
+  const { user } = renderApp({ api: noDraftApi({ createDraft }) });
+
+  await openDraftScreen(user);
+  await user.type(await screen.findByLabelText("기본 소개"), "합성 소개");
+  await user.click(screen.getByRole("button", { name: "초안 만들기" }));
+
+  await screen.findByText(
+    "이름과 기본 소개를 확인해주세요. 둘 다 비워둘 수 없습니다.",
+  );
+  // 일반 실패 문구로 바뀌지 않고, 사용자가 고쳐 다시 저장할 수 있게 폼이 남는다.
+  expect(
+    screen.queryByText(
+      "요청을 처리하지 못했습니다. 문제가 계속되면 요청 ID를 알려주세요.",
+    ),
+  ).toBeNull();
+  expect(screen.getByLabelText("기본 소개")).toHaveValue("합성 소개");
+  expect(screen.getByRole("button", { name: "초안 만들기" })).toBeEnabled();
+});

@@ -117,6 +117,14 @@ export const mockPersonaApi: PersonaApi = {
     await delay(signal);
     requireMockToken(token);
     if (mockDrafts.has(personaId)) throw new ApiError(409, "draft_exists");
+    // Gateway와 같은 필수값 검증이다. mock만 빈 소개를 받아 주면 실제 연동에서만
+    // 422가 나는 흐름을 mock 모드에서 놓친다.
+    if (
+      "settings" in body &&
+      (body.settings.name.trim() === "" || body.settings.profile.trim() === "")
+    ) {
+      throw new ApiError(422, "invalid_settings");
+    }
     // 파생 경로는 서버가 적용본의 설정을 복사한다. mock에는 보관해 둔 적용본이
     // 없으므로 빈 설정으로 대신한다 — 화면 흐름 확인이 목적이고, 실제 복사 결과는
     // 실 서버에서만 의미가 있다.
