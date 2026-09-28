@@ -1,4 +1,5 @@
-import { Link, useLocation, useParams } from "react-router";
+import { useState } from "react";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { NextStepGuide } from "../components/NextStepGuide";
 import { PersonaAvatar } from "../components/PersonaAvatar";
 import { RetryNotice } from "../components/RetryNotice";
@@ -6,6 +7,8 @@ import { StatusBadge } from "../components/StatusBadge";
 import { WorkspaceHeading } from "../components/WorkspaceHeading";
 import { formatCreatedAt } from "../lib/personaCopy";
 import { useStudio } from "../lib/studioContext";
+import type { Persona } from "../lib/types";
+import { useDeletePersona } from "../lib/useDeletePersona";
 
 /**
  * 방금 생성을 마치고 이 화면으로 옮겨 왔는지.
@@ -74,6 +77,79 @@ function LookupNotice({
 }
 
 /**
+ * 캐릭터 삭제 버튼과 확인 영역.
+ *
+ * 브라우저 confirm 창 대신 페이지 안에 확인 영역을 연다 — 캐릭터 이름과 되돌릴 수
+ * 없다는 경고를 함께 보여주고, 취소와 삭제를 서로 다른 모양의 버튼으로 나눈다.
+ * 삭제 성공 뒤 목록을 다시 읽고 /personas로 이동한다. 편집·대화 화면은 라우트를
+ * 떠나면 언마운트되며 진행 중 조회도 함께 정리되므로 따로 지울 상태는 없다.
+ */
+function DeletePersonaSection({ persona }: { persona: Persona }) {
+  const { api, list } = useStudio();
+  const navigate = useNavigate();
+  const deletion = useDeletePersona(api);
+  const [confirming, setConfirming] = useState(false);
+  const deleting = deletion.state === "loading";
+
+  const confirmDelete = () => {
+    if (deleting) return;
+    deletion.remove(persona.id, () => {
+      list.reload();
+      navigate("/personas");
+    });
+  };
+
+  if (!confirming) {
+    return (
+      <button
+        type="button"
+        className="secondary"
+        onClick={() => setConfirming(true)}
+      >
+        캐릭터 삭제
+      </button>
+    );
+  }
+
+  return (
+    <section
+      className="danger-zone"
+      role="alertdialog"
+      aria-labelledby="delete-persona-title"
+      aria-describedby="delete-persona-warning"
+    >
+      <h2 id="delete-persona-title">“{persona.name}” 캐릭터를 삭제할까요?</h2>
+      <p id="delete-persona-warning">
+        캐릭터의 자료와 대화 기록이 영구 삭제됩니다. 되돌릴 수 없습니다.
+      </p>
+      {deletion.error !== null && (
+        <p className="error" role="alert">
+          {deletion.error}
+        </p>
+      )}
+      <div className="danger-zone__actions">
+        <button
+          type="button"
+          className="secondary"
+          disabled={deleting}
+          onClick={() => setConfirming(false)}
+        >
+          취소
+        </button>
+        <button
+          type="button"
+          className="danger"
+          disabled={deleting}
+          onClick={confirmDelete}
+        >
+          {deleting ? "삭제 중…" : "삭제"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+/**
  * 선택한 캐릭터의 개요.
  *
  * 서버에 상세 조회 API가 아직 없으므로 목록 응답에 있는 값만 보여준다.
@@ -136,6 +212,8 @@ export function PersonaOverviewRoute() {
           대화
         </Link>
       </nav>
+
+      <DeletePersonaSection key={persona.id} persona={persona} />
 
       {justCreated && list.state === "error" && (
         <p className="notice">

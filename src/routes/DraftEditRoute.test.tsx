@@ -1,5 +1,8 @@
-import { screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { Link, MemoryRouter } from "react-router";
 import { expect, test, vi } from "vitest";
+import App from "../App";
 import {
   ApiError,
   type Draft,
@@ -14,7 +17,11 @@ import {
   renderApp,
 } from "../test/renderApp";
 
-/** 편집 중, 소스 없음. 대부분의 테스트가 여기서 시작한다. */
+/**
+ * 편집 중, 소스 없음. 대부분의 테스트가 여기서 시작한다.
+ * 소개는 비워두지 않는다 — 기본 소개가 비면 저장 자체가 막히므로(Gateway 필수값),
+ * 저장 흐름을 보는 테스트가 그 규칙에 걸리지 않게 합성 소개를 채워 둔다.
+ */
 const editingDraft: Draft = {
   version_id: "10000000-0000-4000-8000-000000000001",
   revision: 1,
@@ -23,7 +30,7 @@ const editingDraft: Draft = {
   requires_processing: true,
   persona_id: persona.id,
   base_version_id: null,
-  settings: { name: persona.name, profile: "", speech_examples: "" },
+  settings: { name: persona.name, profile: "합성 소개", speech_examples: "" },
   sources: [],
   warnings: [],
   // 실제 gateway 기본값과 맞춘다 — 색인 버튼은 이제 이 값과 무관하다(활성화
@@ -667,4 +674,143 @@ test("채팅에 적용이 실패하면 오류를 보여주고 채팅 이동 버�
   expect(screen.queryByRole("link", { name: "채팅으로 이동" })).toBeNull();
   // 다시 시도할 수 있도록 버튼이 돌아온다.
   expect(screen.getByRole("button", { name: "채팅에 적용" })).toBeEnabled();
+});
+
+// ---- 저장 → 색인 → 채팅에 적용 순서 가드 ----
+
+test("변경이 없으면 저장 버튼이 비활성이다", async () => {
+  const { user } = renderApp({
+    api: personaApi({
+      listPersonas: vi
+        .fn()
+        .mockResolvedValue({ items: [persona], next_cursor: null }),
+      getDraft: vi.fn().mockResolvedValue(editingDraft),
+    }),
+  });
+
+  await openDraftScreen(user);
+
+  expect(screen.getByRole("button", { name: "저장" })).toBeDisabled();
+});
+
+test("미저장 변경이 있으면 색인·채팅에 적용을 막고 먼저 저장하라고 안내한다", async () => {
+  const applyDraft = vi.fn();
+  const activateDraft = vi.fn();
+  const { user } = renderApp({
+    api: personaApi({
+      listPersonas: vi
+        .fn()
+        .mockResolvedValue({ items: [persona], next_cursor: null }),
+      getDraft: vi.fn().mockResolvedValue(activatableDraft),
+      applyDraft,
+      activateDraft,
+    }),
+  });
+
+  await openDraftScreen(user);
+  // 준비: 저장된 상태에서는 두 버튼 모두 누를 수 있다.
+  expect(screen.getByRole("button", { name: "색인" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "채팅에 적용" })).toBeEnabled();
+
+  // 실행: 화면에서만 본문을 고친다.
+  await user.type(screen.getByLabelText(/본문/), " 추가");
+
+  // 검증: 저장 전에는 이전 저장본이 색인·적용되지 않도록 막는다.
+  expect(screen.getByRole("button", { name: "색인" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "채팅에 적용" })).toBeDisabled();
+  expect(screen.getByText(/먼저 저장하세요/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "저장" })).toBeEnabled();
+  expect(applyDraft).not.toHaveBeenCalled();
+  expect(activateDraft).not.toHaveBeenCalled();
+});
+
+test("저장 요청 중에는 색인·채팅에 적용이 비활성이다", async () => {
+  // 저장 응답을 붙잡아 둔다.
+  const patchDraft = vi.fn(() => new Promise<Draft>(() => {}));
+  const { user } = renderApp({
+    api: personaApi({
+      listPersonas: vi
+        .fn()
+        .mockResolvedValue({ items: [persona], next_cursor: null }),
+      getDraft: vi.fn().mockResolvedValue(activatableDraft),
+      patchDraft,
+    }),
+  });
+
+  await openDraftScreen(user);
+  await user.type(screen.getByLabelText(/본문/), " 추가");
+  await user.click(screen.getByRole("button", { name: "저장" }));
+
+  expect(screen.getByRole("button", { name: "저장 중…" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "색인" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "채팅에 적용" })).toBeDisabled();
+});
+
+test("기존 초안에서 기본 소개를 공백으로 비우면 저장을 막고 필수 안내를 보여준다", async () => {
+  const patchDraft = vi.fn();
+  const { user } = renderApp({
+    api: personaApi({
+      listPersonas: vi
+        .fn()
+        .mockResolvedValue({ items: [persona], next_cursor: null }),
+      getDraft: vi.fn().mockResolvedValue(editingDraft),
+      patchDraft,
+    }),
+  });
+
+  await openDraftScreen(user);
+  const profileInput = screen.getByLabelText("기본 소개");
+  await user.clear(profileInput);
+  await user.type(profileInput, "   ");
+
+  expect(screen.getByRole("button", { name: "저장" })).toBeDisabled();
+  expect(screen.getByText(/기본 소개는 필수입니다/)).toBeInTheDocument();
+  expect(patchDraft).not.toHaveBeenCalled();
+});
+
+// ---- 캐릭터 전환 ----
+
+test("A 편집에서 B 편집으로 바로 옮기면 A의 입력이 남지 않는다", async () => {
+  const personaB = {
+    ...persona,
+    id: "00000000-0000-4000-8000-000000000002",
+    name: "합성 루나",
+  };
+  const draftB: Draft = {
+    ...editingDraft,
+    version_id: "10000000-0000-4000-8000-000000000002",
+    persona_id: personaB.id,
+    settings: { name: personaB.name, profile: "B 소개", speech_examples: "" },
+  };
+  const api = personaApi({
+    listPersonas: vi
+      .fn()
+      .mockResolvedValue({ items: [persona, personaB], next_cursor: null }),
+    getDraft: vi.fn((_token: unknown, personaId: string) =>
+      Promise.resolve(personaId === personaB.id ? draftB : editingDraft),
+    ),
+  });
+  const user = userEvent.setup();
+  // 같은 DraftEditRoute가 재사용되는 경로 전환(A draft → B draft)을 재현하려고
+  // 앱 밖에 테스트용 링크를 둔다. 목록 링크는 개요 화면을 거쳐 이 상황이 생기지 않는다.
+  render(
+    <MemoryRouter initialEntries={["/"]}>
+      <App api={api} />
+      <Link to={`/personas/${persona.id}/draft`}>테스트: A 편집</Link>
+      <Link to={`/personas/${personaB.id}/draft`}>테스트: B 편집</Link>
+    </MemoryRouter>,
+  );
+
+  await authenticate(user);
+  await user.click(screen.getByRole("link", { name: "테스트: A 편집" }));
+  await user.type(await screen.findByLabelText(/본문/), "A만의 합성 본문");
+
+  await user.click(screen.getByRole("link", { name: "테스트: B 편집" }));
+
+  await screen.findByRole("heading", { name: /합성 루나 — 자료 편집/ });
+  await waitFor(() =>
+    expect(screen.getByLabelText("기본 소개")).toHaveValue("B 소개"),
+  );
+  expect(screen.getByLabelText(/본문/)).toHaveValue("");
+  expect(screen.getByLabelText("이름")).toHaveValue(personaB.name);
 });

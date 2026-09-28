@@ -46,6 +46,7 @@ export function personaApi(overrides: Partial<PersonaApi> = {}): PersonaApi {
     getMe: bearerGetMe(),
     listPersonas: vi.fn().mockResolvedValue({ items: [], next_cursor: null }),
     createPersona: vi.fn().mockResolvedValue(persona),
+    deletePersona: vi.fn().mockResolvedValue(undefined),
     createDraft: vi.fn(),
     getDraft: vi.fn().mockRejectedValue(new ApiError(404, "draft_not_found")),
     patchDraft: vi.fn(),

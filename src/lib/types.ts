@@ -296,6 +296,17 @@ export interface PersonaApi {
     idempotencyKey: string,
     signal?: AbortSignal,
   ): Promise<Persona>;
+  /**
+   * 캐릭터와 그 자료·대화 기록을 영구 삭제한다. 성공은 204(본문 없음).
+   * 없거나 다른 사용자 소유면 404 persona_not_found, 응답 생성·색인이 진행 중이면
+   * 409 persona_busy. Gateway에 이 API가 배포되기 전에는 404/405로 실패할 수 있다.
+   */
+  deletePersona(
+    token: SessionToken,
+    personaId: string,
+    idempotencyKey: string,
+    signal?: AbortSignal,
+  ): Promise<void>;
   createDraft(
     token: SessionToken,
     personaId: string,

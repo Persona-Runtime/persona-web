@@ -609,6 +609,13 @@ export const httpPersonaApi: PersonaApi = {
       body: JSON.stringify({ name }),
     }),
 
+  deletePersona: (token, personaId, idempotencyKey, signal) =>
+    requestNoContent(`/v1/personas/${encodeURIComponent(personaId)}`, token, {
+      method: "DELETE",
+      signal,
+      headers: { "Idempotency-Key": idempotencyKey },
+    }),
+
   createDraft: (token, personaId, body, idempotencyKey, signal) =>
     request(draftPath(personaId), token, isDraft, {
       method: "POST",

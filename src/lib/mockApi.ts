@@ -113,6 +113,25 @@ export const mockPersonaApi: PersonaApi = {
     return persona;
   },
 
+  async deletePersona(token, personaId, _idempotencyKey, signal) {
+    await delay(signal);
+    requireMockToken(token);
+    if (!mockPersonas.some((persona) => persona.id === personaId)) {
+      throw new ApiError(404, "persona_not_found");
+    }
+    // 실 서버처럼 진행 중인 색인이 있으면 거절한다(강제 취소는 하지 않는다).
+    if (mockDrafts.get(personaId)?.status === "processing") {
+      throw new ApiError(409, "persona_busy");
+    }
+    mockPersonas = mockPersonas.filter((persona) => persona.id !== personaId);
+    mockDrafts.delete(personaId);
+    for (const [id, conversation] of mockConversations) {
+      if (conversation.persona_id !== personaId) continue;
+      mockConversations.delete(id);
+      mockMessageTurns.delete(id);
+    }
+  },
+
   async createDraft(token, personaId, body, _idempotencyKey, signal) {
     await delay(signal);
     requireMockToken(token);
