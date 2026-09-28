@@ -7,16 +7,21 @@ export function CharCounter({
   length,
   max,
   blocking = false,
+  overText,
 }: {
   length: number;
   max: number;
   blocking?: boolean;
+  /** 상한 초과 문구를 바꿀 때 쓴다(예: 채팅은 "저장"이 아니라 "전송"을 막는다). */
+  overText?: string;
 }) {
   const over = length > max;
   return (
     <p className={over ? "counter counter--over" : "counter"}>
       {length.toLocaleString("ko-KR")}/{max.toLocaleString("ko-KR")}자
-      {over && (blocking ? " — 상한 초과, 저장 불가" : " — 안내 상한 초과")}
+      {over &&
+        (overText ??
+          (blocking ? " — 상한 초과, 저장 불가" : " — 안내 상한 초과"))}
     </p>
   );
 }

@@ -12,12 +12,56 @@ import {
   SPEECH_MAX,
   codePointLength,
 } from "../lib/limits";
-import { draftFailedMessage, formatCreatedAt } from "../lib/personaCopy";
+import {
+  draftFailedMessage,
+  formatCreatedAt,
+  statusLabel,
+} from "../lib/personaCopy";
 import { useStudio } from "../lib/studioContext";
+import type { Draft, Persona } from "../lib/types";
 import { useDraft } from "../lib/useDraft";
 
 // 화자: 대사, 또는 화자 (상황): 대사.
 const SPEECH_LINE_PATTERN = /^[^:\n]+(\s\([^)]*\))?:\s/;
+
+/** 화면이 편집하는 자료 kind. 저장 요청과 미저장 변경 비교가 같은 목록을 쓴다. */
+type EditableKind =
+  | "events"
+  | "speech_examples"
+  | "relationships"
+  | "abilities";
+
+/**
+ * 저장 요청이 서버에 보낼 자료 내용으로 정규화한다.
+ *
+ * 공백뿐인 입력은 저장 시 "그 소스 삭제"로 처리되므로(useDraft.save), 비교할 때도
+ * 빈 값으로 본다. 그래야 공백만 친 입력을 미저장 변경으로 오판하지 않는다.
+ */
+function normalizedSource(content: string): string {
+  return content.trim() === "" ? "" : content;
+}
+
+/**
+ * 폼 값이 서버에 마지막으로 저장된 초안과 다른지 본다.
+ *
+ * 색인(apply)은 서버에 저장된 revision을 처리한다. 화면에만 있는 변경을 두고 색인하면
+ * 사용자가 본 내용이 아니라 이전 저장본이 색인되므로, 이 값으로 색인·활성화를 막는다.
+ */
+function hasUnsavedChanges(
+  draft: Draft,
+  form: {
+    name: string;
+    profile: string;
+    sources: Record<EditableKind, string>;
+  },
+): boolean {
+  if (form.name.trim() !== draft.settings.name) return true;
+  if (form.profile !== draft.settings.profile) return true;
+  return (Object.keys(form.sources) as EditableKind[]).some((kind) => {
+    const saved = draft.sources.find((s) => s.kind === kind)?.content ?? "";
+    return normalizedSource(form.sources[kind]) !== saved;
+  });
+}
 
 function countBadSpeechLines(text: string): number {
   const lines = text.split("\n").filter((line) => line.trim() !== "");
@@ -33,7 +77,7 @@ function countBadSpeechLines(text: string): number {
  */
 export function DraftEditRoute() {
   const { personaId } = useParams();
-  const { api, findPersona } = useStudio();
+  const { api, findPersona, list } = useStudio();
   const persona = personaId === undefined ? null : findPersona(personaId);
 
   return persona === null || personaId === undefined ? (
@@ -45,11 +89,16 @@ export function DraftEditRoute() {
       </Link>
     </>
   ) : (
+    // key로 캐릭터마다 폼을 새로 만든다. 같은 경로에서 personaId만 바뀌면 React가
+    // 컴포넌트를 재사용해 입력값·initialized가 이전 캐릭터의 것으로 남기 때문이다.
     <DraftEditForm
+      key={personaId}
       api={api}
       personaId={personaId}
       personaName={persona.name}
       activeVersionId={persona.active_version_id}
+      personaStatus={persona.status}
+      onActivated={list.reload}
     />
   );
 }
@@ -59,11 +108,16 @@ function DraftEditForm({
   personaId,
   personaName,
   activeVersionId,
+  personaStatus,
+  onActivated,
 }: {
   api: ReturnType<typeof useStudio>["api"];
   personaId: string;
   personaName: string;
   activeVersionId: string | null;
+  personaStatus: Persona["status"];
+  /** 활성화 성공 뒤 캐릭터 목록(=상세 상태의 출처)을 다시 조회한다. */
+  onActivated: () => void;
 }) {
   const draftState = useDraft(api, personaId);
   const { state, draft, loadError, reload, notStarted, startFromActive } =
@@ -103,6 +157,31 @@ function DraftEditForm({
       setShowOptional(true);
     }
   }, [draft]);
+
+  // 채팅에 적용 성공. 이 초안은 이제 적용본이라 더 편집·색인하지 않는다(서버가 초안
+  // 슬롯을 비웠다). 채팅 이동 버튼은 목록 재조회로 캐릭터가 준비됨이 된 뒤에만 보인다 —
+  // 대화 화면은 목록의 적용본(active_version_id)으로 대화 가능 여부를 판정하기 때문에,
+  // 갱신 전에 보내면 "자료를 먼저 적용하세요"를 보게 된다.
+  if (draftState.activateState === "ready") {
+    const chatReady = personaStatus === "ready" && activeVersionId !== null;
+    return (
+      <>
+        <WorkspaceHeading id="workspace-title">
+          {personaName} — 자료 편집
+        </WorkspaceHeading>
+        <p className="guide" role="status">
+          채팅에 적용했습니다. 캐릭터 상태: {statusLabel(personaStatus)}
+        </p>
+        {chatReady ? (
+          <Link className="text-button" to={`/personas/${personaId}/chat`}>
+            채팅으로 이동
+          </Link>
+        ) : (
+          <p className="guide">캐릭터 상태를 갱신하는 중입니다…</p>
+        )}
+      </>
+    );
+  }
 
   // 적용본은 있는데 초안 슬롯이 비어 있다(활성화 직후). 실패가 아니라 다음 행동이
   // 정해져 있는 상태이므로, "다시 조회"가 아니라 새 초안을 시작하게 안내한다.
@@ -179,9 +258,23 @@ function DraftEditForm({
   const badSpeechLines = countBadSpeechLines(speech);
 
   const nameValid = name.trim() !== "";
+  // Gateway는 저장된 초안에도 비공백 소개를 요구한다(422 invalid_settings). 보내서
+  // 실패시키지 않고 여기서 먼저 막는다.
+  const profileMissing = profile.trim() === "";
   const profileBlocked = profileLen > PROFILE_MAX;
+  const unsaved = hasUnsavedChanges(draft, {
+    name,
+    profile,
+    sources: {
+      events: body,
+      speech_examples: speech,
+      relationships,
+      abilities,
+    },
+  });
+  const saving = draftState.saveState === "loading";
   const canSave =
-    nameValid && !profileBlocked && draftState.saveState !== "loading";
+    unsaved && nameValid && !profileMissing && !profileBlocked && !saving;
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -199,16 +292,30 @@ function DraftEditForm({
   // (지금 늘 false라 그러면 색인 자체가 영원히 막힌다). 자료 1개 이상 조건은
   // 422 no_content를 미리 걸러 불필요한 요청을 줄이려는 것이다.
   const hasSource = draft.sources.length > 0;
+  // 저장 중이거나 미저장 변경이 있으면 색인·활성화를 막는다 — 저장 → 색인 → 채팅에
+  // 적용 순서가 어긋나면 화면 내용과 다른 revision이 색인·적용된다.
   const canApply =
     draft.status !== "processing" &&
     hasSource &&
+    !unsaved &&
+    !saving &&
     draftState.applyState !== "loading";
+  const canActivate =
+    draft.can_activate &&
+    !unsaved &&
+    !saving &&
+    draftState.activateState !== "loading";
 
   return (
     <>
       <WorkspaceHeading id="workspace-title">
         {personaName} — 자료 편집
       </WorkspaceHeading>
+
+      <p className="guide">
+        순서: 저장 → 색인 → 채팅에 적용. 자료를 고치면 다시 저장한 뒤 색인해야
+        합니다.
+      </p>
 
       <div className="facts">
         <DraftStatusBadge status={draft.status} />
@@ -227,8 +334,6 @@ function DraftEditForm({
       </div>
 
       {draft.can_activate && (
-        // 활성화(캐릭터의 적용본으로 만들기) 버튼은 이 화면에 아직 없다 — 색인
-        // 버튼과 혼동하지 않도록 지금은 판정값을 안내 문구로만 보여준다.
         <p className="guide">이 색인 결과는 적용본으로 활성화할 수 있습니다.</p>
       )}
 
@@ -264,6 +369,9 @@ function DraftEditForm({
           onChange={(event) => setProfile(event.target.value)}
         />
         <CharCounter length={profileLen} max={PROFILE_MAX} blocking />
+        <p className={profileMissing ? "counter counter--over" : "counter"}>
+          기본 소개는 필수입니다. 비워두면 저장할 수 없습니다.
+        </p>
 
         <label htmlFor="draft-body">
           본문 — corpus-tools --format paste 출력을 그대로
@@ -330,6 +438,13 @@ function DraftEditForm({
         </button>
       </form>
 
+      {unsaved && (
+        <p className="notice" role="status">
+          저장하지 않은 변경이 있습니다. 먼저 저장하세요 — 색인과 채팅에 적용은
+          저장된 내용으로만 진행됩니다.
+        </p>
+      )}
+
       {draftState.applyError !== null && (
         <div className="error" role="alert">
           <p>{draftState.applyError}</p>
@@ -339,6 +454,22 @@ function DraftEditForm({
         {draftState.applyState === "loading" || draft.status === "processing"
           ? "색인 중…"
           : "색인"}
+      </button>
+
+      {/* 활성화(POST draft/activate)는 색인 결과를 캐릭터의 적용본으로 세운다. 누를 수
+          있는지는 서버 판정값 can_activate만 따른다 — 화면이 조건을 다시 계산하면
+          서버의 활성화 규칙과 어긋날 수 있다. */}
+      {draftState.activateError !== null && (
+        <div className="error" role="alert">
+          <p>{draftState.activateError}</p>
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => draftState.activate(onActivated)}
+        disabled={!canActivate}
+      >
+        {draftState.activateState === "loading" ? "적용 중…" : "채팅에 적용"}
       </button>
     </>
   );

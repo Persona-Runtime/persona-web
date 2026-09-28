@@ -1,12 +1,13 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
+import { CharCounter } from "../components/CharCounter";
 import { RetryNotice } from "../components/RetryNotice";
 import { WorkspaceHeading } from "../components/WorkspaceHeading";
+import { QUESTION_MAX, codePointLength } from "../lib/limits";
+import { generationFailedMessage } from "../lib/personaCopy";
 import { useStudio } from "../lib/studioContext";
 import { useChat } from "../lib/useChat";
 import type { Generation, MessageTurn } from "../lib/types";
-
-const MAX_MESSAGE_CHARS = 2000;
 
 /**
  * 대화 화면. 캐릭터에 적용본(active_version_id)이 있어야 열린다.
@@ -47,7 +48,7 @@ function generationStatusLabel(generation: Generation): string | null {
     case "cancelled":
       return "취소됨";
     case "failed":
-      return "응답 생성에 실패했습니다.";
+      return generationFailedMessage(generation.failure_code);
     case "reconciling":
       return "결과를 확인하는 중입니다.";
     default:
@@ -181,10 +182,15 @@ function ChatScreen({
   // 동안은 전송·재시도를 막는다(서버 409를 굳이 유발하지 않는다).
   const busy = chat.streaming !== null || chat.sendState === "loading";
 
+  // 질문 길이는 코드 포인트로 센다(서버 Python len과 같은 기준). 한도를 넘으면
+  // 안내를 보여주고 전송을 막는다 — 보내면 서버가 QuestionTooLong으로 실패시킨다.
+  const questionLength = codePointLength(input.trim());
+  const questionTooLong = questionLength > QUESTION_MAX;
+
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const trimmed = input.trim();
-    if (trimmed === "" || trimmed.length > MAX_MESSAGE_CHARS || busy) return;
+    if (trimmed === "" || questionTooLong || busy) return;
     chat.send(trimmed);
     setInput("");
   };
@@ -262,7 +268,22 @@ function ChatScreen({
           disabled={busy}
           onChange={(event) => setInput(event.target.value)}
         />
-        <button type="submit" disabled={busy || input.trim() === ""}>
+        <CharCounter
+          length={questionLength}
+          max={QUESTION_MAX}
+          blocking
+          overText=" — 상한 초과, 전송 불가"
+        />
+        {questionTooLong && (
+          <p className="error" role="alert">
+            질문은 최대 {QUESTION_MAX.toLocaleString("ko-KR")}자까지 보낼 수
+            있습니다. 질문을 줄여주세요.
+          </p>
+        )}
+        <button
+          type="submit"
+          disabled={busy || input.trim() === "" || questionTooLong}
+        >
           보내기
         </button>
       </form>

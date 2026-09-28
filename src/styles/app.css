@@ -78,6 +78,39 @@ button:disabled {
   background: var(--text);
 }
 
+/* 되돌릴 수 없는 동작(캐릭터 삭제)은 일반 버튼과 색으로 구분한다. */
+.danger {
+  background: var(--danger);
+}
+
+.danger:hover {
+  background: var(--danger);
+  filter: brightness(0.9);
+}
+
+.danger:disabled {
+  background: var(--danger);
+}
+
+.danger-zone {
+  margin-top: 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  background: var(--danger-soft);
+}
+
+.danger-zone h2 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+
+.danger-zone__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .text-button {
   background: transparent;
   color: var(--accent);

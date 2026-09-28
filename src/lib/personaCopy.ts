@@ -24,6 +24,11 @@ export function messageFor(error: unknown): string {
       return "캐릭터는 최대 3개까지 만들 수 있습니다. 목록을 다시 확인해주세요.";
     case "idempotency_conflict":
       return "이전 생성 요청과 내용이 달라 요청을 처리할 수 없습니다. 이름을 확인해주세요.";
+    case "persona_busy":
+      // 삭제는 진행 중인 작업을 강제로 멈추지 않는다 — 끝난 뒤 다시 시도하면 된다.
+      return "응답 생성 또는 자료 색인이 진행 중입니다. 끝난 뒤 다시 시도하세요.";
+    case "persona_not_found":
+      return "캐릭터를 찾을 수 없습니다. 이미 삭제됐을 수 있으니 목록을 다시 확인해주세요.";
     case "dependency_unavailable":
       return "서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요.";
     // 초안 저장·적용 관련 오류. revision_conflict(PATCH)는 이 함수로 안내하지 않는다 —
@@ -76,13 +81,34 @@ export function messageFor(error: unknown): string {
     case "retry_input_unavailable":
       return "재사용할 입력이 없어 다시 시도할 수 없습니다.";
     case "invalid_message":
-      return "질문 내용을 확인해주세요(1~2,000자).";
+      // 서버 요청 검증 상한(2,000자)이 아니라 웹이 실제로 허용하는 질문 한도를
+      // 안내한다 — 1,001자 이상은 llm 모드에서 어차피 실패하기 때문이다(limits.ts).
+      return "질문 내용을 확인해주세요(1~1,000자).";
     case "invalid_response":
       // 라우팅·배포 설정 문제라 재시도로는 풀리지 않는다. "잠시 후 다시"를 권하지
       // 않는다. 이 오류에는 요청 ID도 없으므로 요청 ID를 묻지도 않는다.
       return "서버 응답 형식이 예상과 달라 화면에 표시할 수 없습니다. 입력 문제가 아니라 서버 연결 설정 문제일 수 있으니 관리자에게 알려주세요.";
     default:
       return "요청을 처리하지 못했습니다. 문제가 계속되면 요청 ID를 알려주세요.";
+  }
+}
+
+/**
+ * 실패한 응답 생성(generation)의 failure_code를 사용자 문구로 바꾼다.
+ *
+ * 질문 자체가 긴 경우(QuestionTooLong)와 모델 전체 문맥 한도를 넘은 경우
+ * (upstream_status_400)를 구분한다. 앞은 질문만 줄이면 되지만, 뒤는 캐릭터 설정·검색
+ * 자료·대화 기록까지 합친 입력이 모델 한도를 넘은 것이라 질문을 줄여도 풀리지 않을
+ * 수 있다. 모르는 코드는 일반 실패 문구로 둔다.
+ */
+export function generationFailedMessage(failureCode: string | null): string {
+  switch (failureCode) {
+    case "QuestionTooLong":
+      return "질문이 너무 깁니다(최대 1,000자). 질문을 줄여 다시 보내주세요.";
+    case "upstream_status_400":
+      return "캐릭터 설정·참고 자료·대화 기록을 합친 입력이 모델이 한 번에 처리할 수 있는 길이를 넘었습니다. 새 대화에서 짧게 다시 질문해보세요.";
+    default:
+      return "응답 생성에 실패했습니다.";
   }
 }
 

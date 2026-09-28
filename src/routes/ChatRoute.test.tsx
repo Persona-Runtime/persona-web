@@ -756,3 +756,80 @@ test("활성화 뒤 초안이 없어도 대화 화면이 열린다", async () =>
   // 대화 화면은 초안을 읽을 이유가 없다.
   expect(getDraft).not.toHaveBeenCalled();
 });
+
+// ---- 질문 길이 한도(현재 LLM 배포 기준 1,000자) ----
+
+function readyChatApi(overrides: Parameters<typeof personaApi>[0] = {}) {
+  return personaApi({
+    listPersonas: vi
+      .fn()
+      .mockResolvedValue({ items: [activatedPersona], next_cursor: null }),
+    getDraft: vi.fn().mockResolvedValue({ ...baseDraft, status: "ready" }),
+    listConversations: vi
+      .fn()
+      .mockResolvedValue({ items: [conversation], next_cursor: null }),
+    listMessages: vi.fn().mockResolvedValue({ items: [], next_cursor: null }),
+    ...overrides,
+  });
+}
+
+test("질문이 1,000자를 넘으면 안내를 보여주고 전송을 막는다", async () => {
+  const startChatCompletion = vi.fn();
+  const { user } = renderApp({ api: readyChatApi({ startChatCompletion }) });
+
+  await openChatScreen(user);
+  const input = await screen.findByLabelText("메시지");
+  // 경계값: 정확히 1,000자는 보낼 수 있다.
+  await user.click(input);
+  await user.paste("가".repeat(1000));
+  expect(screen.getByRole("button", { name: "보내기" })).toBeEnabled();
+
+  // 1,001자부터는 막는다.
+  await user.type(input, "가");
+  expect(screen.getByRole("button", { name: "보내기" })).toBeDisabled();
+  expect(
+    screen.getByText(/질문은 최대 1,000자까지 보낼 수 있습니다/),
+  ).toBeInTheDocument();
+  expect(screen.getByText(/1,001\/1,000자/)).toBeInTheDocument();
+  expect(startChatCompletion).not.toHaveBeenCalled();
+});
+
+test("서버가 QuestionTooLong으로 실패시키면 질문 길이 문제로 안내한다", async () => {
+  const events: ChatEvent[] = [
+    {
+      type: "meta",
+      data: {
+        generation_id: "g1",
+        conversation_id: conversation.id,
+        user_message_id: "u1",
+        assistant_message_id: "g1",
+        version_id: conversation.initial_version_id,
+        mode: "llm",
+      },
+    },
+    {
+      type: "error",
+      data: {
+        generation_id: "g1",
+        code: "QuestionTooLong",
+        message: "실패",
+        status: "failed",
+      },
+    },
+  ];
+  const { user } = renderApp({
+    api: readyChatApi({ startChatCompletion: streamingApi(events) }),
+  });
+
+  await openChatScreen(user);
+  await user.type(await screen.findByLabelText("메시지"), "합성 질문");
+  await user.click(screen.getByRole("button", { name: "보내기" }));
+
+  expect(
+    await screen.findByText(
+      "질문이 너무 깁니다(최대 1,000자). 질문을 줄여 다시 보내주세요.",
+    ),
+  ).toBeInTheDocument();
+  // 모델 전체 문맥 한도 안내와 섞이지 않는다.
+  expect(screen.queryByText(/모델이 한 번에 처리할 수 있는/)).toBeNull();
+});
