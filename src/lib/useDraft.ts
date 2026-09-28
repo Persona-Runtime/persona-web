@@ -17,7 +17,7 @@ export interface DraftSourceInput {
 }
 
 export interface DraftHookState {
-  /** 최초 조회(또는 자동 생성)의 진행 상태. */
+  /** 최초 조회의 진행 상태. 초안이 없으면(needsInitialDraft) 조회 자체는 ready다. */
   state: LoadState;
   draft: Draft | null;
   loadError: string | null;
@@ -29,6 +29,16 @@ export interface DraftHookState {
   notStarted: boolean;
   /** 적용본에서 파생한 새 초안을 시작한다. notStarted일 때만 의미가 있다. */
   startFromActive: (baseVersionId: string) => void;
+
+  /**
+   * true면 초안이 아직 한 번도 만들어지지 않았다(404 draft_not_found). 화면은 오류 대신
+   * 이름·소개 초기 입력 폼을 보여주고, 사용자가 저장할 때 createInitial을 부른다.
+   */
+  needsInitialDraft: boolean;
+  createState: LoadState;
+  createError: string | null;
+  /** 사용자가 입력한 이름·소개로 첫 초안을 만든다. needsInitialDraft일 때만 의미가 있다. */
+  createInitial: (settings: { name: string; profile: string }) => void;
 
   saveState: LoadState;
   saveError: string | null;
@@ -55,17 +65,15 @@ function findSourceByKind(
 /**
  * 캐릭터 하나의 초안(자료 편집·적용) 상태를 관리한다.
  *
- * 초안이 없으면(404 draft_not_found) 빈 설정으로 새로 만든다 — 이 화면에 들어온다는
- * 것 자체가 자료를 입력하겠다는 뜻이라 빈 초안을 먼저 보여주고 기다릴 이유가 없다.
+ * 초안이 없으면(404 draft_not_found) 자동으로 만들지 않고 needsInitialDraft만 알린다.
+ * Gateway는 settings 경로에서 비공백 name·profile을 요구하므로(422 invalid_settings)
+ * 빈 소개로 자동 생성하면 늘 실패한다. 가짜 소개를 채워 우회하면 사용자가 쓰지 않은
+ * 내용이 초안에 남으므로, 사용자가 직접 입력한 값으로만 생성한다(createInitial).
  *
  * status가 processing이면 5초 간격으로 폴링한다. 언마운트나 processing 이탈 시
  * 정리한다 — 안 그러면 적용 뒤 화면을 떠나도 백그라운드에서 계속 조회하게 된다.
  */
-export function useDraft(
-  api: PersonaApi,
-  personaId: string,
-  personaName: string,
-): DraftHookState {
+export function useDraft(api: PersonaApi, personaId: string): DraftHookState {
   const { request } = useSession();
   const [state, setState] = useState<LoadState>("idle");
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -79,6 +87,9 @@ export function useDraft(
   // "새 초안을 시작하면 이어서 고칠 수 있다"는 상태이므로 따로 들고 있는다 —
   // saveConflict(revision_conflict)와 같은 방식이다.
   const [notStarted, setNotStarted] = useState(false);
+  const [needsInitialDraft, setNeedsInitialDraft] = useState(false);
+  const [createState, setCreateState] = useState<LoadState>("idle");
+  const [createError, setCreateError] = useState<string | null>(null);
   const latestLoad = useRef(0);
 
   const reload = useCallback(() => {
@@ -86,6 +97,7 @@ export function useDraft(
     setState("loading");
     setLoadError(null);
     setNotStarted(false);
+    setNeedsInitialDraft(false);
     void request((token, signal) =>
       api.getDraft(token, personaId, signal),
     ).then((outcome) => {
@@ -96,32 +108,14 @@ export function useDraft(
         setState("ready");
         return;
       }
-      // 초안이 아직 없으면 빈 값으로 새로 만든다. 다른 실패는 그대로 오류로 보여준다.
+      // 초안이 아직 없다 — 오류가 아니라 첫 입력을 기다리는 상태다. 여기서 생성
+      // API를 부르지 않는다(빈 소개는 Gateway가 422로 거절한다).
       if (
         outcome.error instanceof ApiError &&
         outcome.error.code === "draft_not_found"
       ) {
-        void request((token, signal) =>
-          api.createDraft(
-            token,
-            personaId,
-            {
-              settings: { name: personaName, profile: "", speech_examples: "" },
-            },
-            crypto.randomUUID(),
-            signal,
-          ),
-        ).then((createOutcome) => {
-          if (latestLoad.current !== loadId) return;
-          if (createOutcome.status === "stale") return;
-          if (createOutcome.status === "failed") {
-            setLoadError(messageFor(createOutcome.error));
-            setState("error");
-            return;
-          }
-          setDraft(createOutcome.value);
-          setState("ready");
-        });
+        setNeedsInitialDraft(true);
+        setState("ready");
         return;
       }
       // 활성화 직후의 정상 상태다. 화면이 "새 초안 만들기"를 안내할 수 있도록
@@ -138,7 +132,7 @@ export function useDraft(
       setLoadError(messageFor(outcome.error));
       setState("error");
     });
-  }, [api, personaId, personaName, request]);
+  }, [api, personaId, request]);
 
   /**
    * 적용본에서 파생한 새 초안을 시작한다.
@@ -172,6 +166,44 @@ export function useDraft(
         }
         setDraft(outcome.value);
         setState("ready");
+      });
+    },
+    [api, personaId, request],
+  );
+
+  /**
+   * 사용자가 입력한 이름·소개로 첫 초안을 만든다.
+   *
+   * 실패해도 needsInitialDraft를 유지해 입력 폼과 내용을 그대로 둔다 — 사용자는 값을
+   * 고쳐 다시 저장하면 된다. 멱등 키는 저장 시도마다 새로 만든다. 연속 클릭은 화면이
+   * createState "loading" 동안 버튼을 막아 줄이지만, 그것이 서버 멱등성을 대신하지는
+   * 않는다. 같은 캐릭터에 이미 초안이 생겼다면 서버가 409 draft_exists로 거절한다.
+   */
+  const createInitial = useCallback(
+    (settings: { name: string; profile: string }) => {
+      const loadId = latestLoad.current;
+      setCreateState("loading");
+      setCreateError(null);
+      void request((token, signal) =>
+        api.createDraft(
+          token,
+          personaId,
+          { settings: { ...settings, speech_examples: "" } },
+          crypto.randomUUID(),
+          signal,
+        ),
+      ).then((outcome) => {
+        // 그사이 다른 조회가 시작됐다면(캐릭터 이동·다시 조회) 이 결과는 낡았다.
+        if (latestLoad.current !== loadId) return;
+        if (outcome.status === "stale") return;
+        if (outcome.status === "failed") {
+          setCreateError(messageFor(outcome.error));
+          setCreateState("error");
+          return;
+        }
+        setDraft(outcome.value);
+        setNeedsInitialDraft(false);
+        setCreateState("ready");
       });
     },
     [api, personaId, request],
@@ -285,6 +317,10 @@ export function useDraft(
     reload,
     notStarted,
     startFromActive,
+    needsInitialDraft,
+    createState,
+    createError,
+    createInitial,
     saveState,
     saveError,
     saveConflict,

@@ -29,6 +29,10 @@ export function messageFor(error: unknown): string {
     // 초안 저장·적용 관련 오류. revision_conflict(PATCH)는 이 함수로 안내하지 않는다 —
     // 화면이 "다른 곳에서 수정됨" 배너로 따로 보여주고 입력 내용을 지우지 않아야 하므로,
     // 일반 오류 문구가 아니라 별도 분기가 필요하다.
+    // Gateway는 초안 생성·저장 모두에서 비공백 이름·소개를 요구한다. 일반 실패 문구로
+    // 보이면 사용자가 무엇을 고쳐야 할지 모르므로 두 입력을 직접 가리킨다.
+    case "invalid_settings":
+      return "이름과 기본 소개를 확인해주세요. 둘 다 비워둘 수 없습니다.";
     case "settings_too_large":
       return "profile은 1,500자를 넘을 수 없습니다. 내용을 줄여주세요.";
     case "source_too_large":
