@@ -141,7 +141,14 @@ export const mockPersonaApi: PersonaApi = {
     await delay(signal);
     requireMockToken(token);
     const draft = mockDrafts.get(personaId);
-    if (draft === undefined) throw new ApiError(404, "draft_not_found");
+    if (draft === undefined) {
+      // 실 서버처럼 적용본은 있는데 초안 슬롯이 빈 상태(활성화 직후)를 구분한다.
+      const persona = mockPersonas.find((item) => item.id === personaId);
+      if (persona?.active_version_id != null) {
+        throw new ApiError(409, "draft_not_started");
+      }
+      throw new ApiError(404, "draft_not_found");
+    }
     return draft;
   },
 
@@ -266,6 +273,41 @@ export const mockPersonaApi: PersonaApi = {
     }, APPLY_DELAY_MS);
 
     return { version_id: processing.version_id, status: "processing" };
+  },
+
+  async activateDraft(
+    token,
+    personaId,
+    expectedRevision,
+    _idempotencyKey,
+    signal,
+  ) {
+    await delay(signal);
+    requireMockToken(token);
+    const draft = mockDrafts.get(personaId);
+    if (draft === undefined) throw new ApiError(404, "draft_not_found");
+    if (draft.revision !== expectedRevision) {
+      throw new ApiError(409, "revision_mismatch");
+    }
+    if (!draft.can_activate) throw new ApiError(409, "not_activatable");
+
+    // 실 서버처럼 포인터만 옮긴다 — 적용본을 세우고 초안 슬롯을 비운다.
+    mockPersonas = mockPersonas.map((persona) =>
+      persona.id === personaId
+        ? {
+            ...persona,
+            status: "ready",
+            active_version_id: draft.version_id,
+            draft: null,
+          }
+        : persona,
+    );
+    mockDrafts.delete(personaId);
+    return {
+      persona_id: personaId,
+      version_id: draft.version_id,
+      activated_at: new Date().toISOString(),
+    };
   },
 
   async discardDraft(token, personaId, _idempotencyKey, signal) {

@@ -52,6 +52,12 @@ export interface DraftHookState {
   applyState: LoadState;
   applyError: string | null;
   apply: () => void;
+
+  /** 채팅에 적용(POST draft/activate)의 진행 상태. ready면 적용본이 세워졌다. */
+  activateState: LoadState;
+  activateError: string | null;
+  /** 지금 초안 revision으로 활성화한다. 성공하면 onActivated를 한 번 부른다. */
+  activate: (onActivated: () => void) => void;
 }
 
 /** kind별로 소스를 하나만 쓰는 이 화면의 규칙에 맞춰 기존 소스를 찾는다. */
@@ -83,6 +89,8 @@ export function useDraft(api: PersonaApi, personaId: string): DraftHookState {
   const [saveConflict, setSaveConflict] = useState(false);
   const [applyState, setApplyState] = useState<LoadState>("idle");
   const [applyError, setApplyError] = useState<string | null>(null);
+  const [activateState, setActivateState] = useState<LoadState>("idle");
+  const [activateError, setActivateError] = useState<string | null>(null);
   // 적용본은 있는데 초안 슬롯이 비었다(409 draft_not_started). 오류가 아니라
   // "새 초안을 시작하면 이어서 고칠 수 있다"는 상태이므로 따로 들고 있는다 —
   // saveConflict(revision_conflict)와 같은 방식이다.
@@ -310,6 +318,44 @@ export function useDraft(api: PersonaApi, personaId: string): DraftHookState {
     });
   }, [api, draft, personaId, reload, request]);
 
+  /**
+   * 색인이 끝난 초안을 캐릭터의 적용본으로 세운다(채팅에 적용).
+   *
+   * expected_revision으로 지금 화면이 본 revision을 보낸다 — 그사이 다른 곳에서 자료가
+   * 바뀌었다면 서버가 409 revision_mismatch로 거절해, 사용자가 보지 않은 내용이
+   * 적용본이 되지 않는다.
+   *
+   * 성공 뒤 초안을 다시 조회하지 않는다. 서버가 초안 슬롯을 비우므로 재조회는
+   * 409 draft_not_started가 되고, 화면이 "새 초안 만들기" 안내로 바뀌어 방금 성공한
+   * 결과와 채팅 이동 안내를 가린다. 캐릭터 상태 갱신은 onActivated(목록 재조회)가 맡는다.
+   */
+  const activate = useCallback(
+    (onActivated: () => void) => {
+      if (draft === null) return;
+      setActivateState("loading");
+      setActivateError(null);
+      void request((token, signal) =>
+        api.activateDraft(
+          token,
+          personaId,
+          draft.revision,
+          crypto.randomUUID(),
+          signal,
+        ),
+      ).then((outcome) => {
+        if (outcome.status === "stale") return;
+        if (outcome.status === "failed") {
+          setActivateError(messageFor(outcome.error));
+          setActivateState("error");
+          return;
+        }
+        setActivateState("ready");
+        onActivated();
+      });
+    },
+    [api, draft, personaId, request],
+  );
+
   return {
     state,
     draft,
@@ -328,5 +374,8 @@ export function useDraft(api: PersonaApi, personaId: string): DraftHookState {
     applyState,
     applyError,
     apply,
+    activateState,
+    activateError,
+    activate,
   };
 }

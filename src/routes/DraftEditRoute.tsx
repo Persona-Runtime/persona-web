@@ -12,8 +12,13 @@ import {
   SPEECH_MAX,
   codePointLength,
 } from "../lib/limits";
-import { draftFailedMessage, formatCreatedAt } from "../lib/personaCopy";
+import {
+  draftFailedMessage,
+  formatCreatedAt,
+  statusLabel,
+} from "../lib/personaCopy";
 import { useStudio } from "../lib/studioContext";
+import type { Persona } from "../lib/types";
 import { useDraft } from "../lib/useDraft";
 
 // 화자: 대사, 또는 화자 (상황): 대사.
@@ -33,7 +38,7 @@ function countBadSpeechLines(text: string): number {
  */
 export function DraftEditRoute() {
   const { personaId } = useParams();
-  const { api, findPersona } = useStudio();
+  const { api, findPersona, list } = useStudio();
   const persona = personaId === undefined ? null : findPersona(personaId);
 
   return persona === null || personaId === undefined ? (
@@ -50,6 +55,8 @@ export function DraftEditRoute() {
       personaId={personaId}
       personaName={persona.name}
       activeVersionId={persona.active_version_id}
+      personaStatus={persona.status}
+      onActivated={list.reload}
     />
   );
 }
@@ -59,11 +66,16 @@ function DraftEditForm({
   personaId,
   personaName,
   activeVersionId,
+  personaStatus,
+  onActivated,
 }: {
   api: ReturnType<typeof useStudio>["api"];
   personaId: string;
   personaName: string;
   activeVersionId: string | null;
+  personaStatus: Persona["status"];
+  /** 활성화 성공 뒤 캐릭터 목록(=상세 상태의 출처)을 다시 조회한다. */
+  onActivated: () => void;
 }) {
   const draftState = useDraft(api, personaId);
   const { state, draft, loadError, reload, notStarted, startFromActive } =
@@ -103,6 +115,31 @@ function DraftEditForm({
       setShowOptional(true);
     }
   }, [draft]);
+
+  // 채팅에 적용 성공. 이 초안은 이제 적용본이라 더 편집·색인하지 않는다(서버가 초안
+  // 슬롯을 비웠다). 채팅 이동 버튼은 목록 재조회로 캐릭터가 준비됨이 된 뒤에만 보인다 —
+  // 대화 화면은 목록의 적용본(active_version_id)으로 대화 가능 여부를 판정하기 때문에,
+  // 갱신 전에 보내면 "자료를 먼저 적용하세요"를 보게 된다.
+  if (draftState.activateState === "ready") {
+    const chatReady = personaStatus === "ready" && activeVersionId !== null;
+    return (
+      <>
+        <WorkspaceHeading id="workspace-title">
+          {personaName} — 자료 편집
+        </WorkspaceHeading>
+        <p className="guide" role="status">
+          채팅에 적용했습니다. 캐릭터 상태: {statusLabel(personaStatus)}
+        </p>
+        {chatReady ? (
+          <Link className="text-button" to={`/personas/${personaId}/chat`}>
+            채팅으로 이동
+          </Link>
+        ) : (
+          <p className="guide">캐릭터 상태를 갱신하는 중입니다…</p>
+        )}
+      </>
+    );
+  }
 
   // 적용본은 있는데 초안 슬롯이 비어 있다(활성화 직후). 실패가 아니라 다음 행동이
   // 정해져 있는 상태이므로, "다시 조회"가 아니라 새 초안을 시작하게 안내한다.
@@ -203,6 +240,8 @@ function DraftEditForm({
     draft.status !== "processing" &&
     hasSource &&
     draftState.applyState !== "loading";
+  const canActivate =
+    draft.can_activate && draftState.activateState !== "loading";
 
   return (
     <>
@@ -227,8 +266,6 @@ function DraftEditForm({
       </div>
 
       {draft.can_activate && (
-        // 활성화(캐릭터의 적용본으로 만들기) 버튼은 이 화면에 아직 없다 — 색인
-        // 버튼과 혼동하지 않도록 지금은 판정값을 안내 문구로만 보여준다.
         <p className="guide">이 색인 결과는 적용본으로 활성화할 수 있습니다.</p>
       )}
 
@@ -339,6 +376,22 @@ function DraftEditForm({
         {draftState.applyState === "loading" || draft.status === "processing"
           ? "색인 중…"
           : "색인"}
+      </button>
+
+      {/* 활성화(POST draft/activate)는 색인 결과를 캐릭터의 적용본으로 세운다. 누를 수
+          있는지는 서버 판정값 can_activate만 따른다 — 화면이 조건을 다시 계산하면
+          서버의 활성화 규칙과 어긋날 수 있다. */}
+      {draftState.activateError !== null && (
+        <div className="error" role="alert">
+          <p>{draftState.activateError}</p>
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => draftState.activate(onActivated)}
+        disabled={!canActivate}
+      >
+        {draftState.activateState === "loading" ? "적용 중…" : "채팅에 적용"}
       </button>
     </>
   );

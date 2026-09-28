@@ -7,6 +7,7 @@ import {
   type Conversation,
   type ConversationPage,
   type Draft,
+  type DraftActivated,
   type DraftApplyAccepted,
   type DraftStatus,
   type Generation,
@@ -225,6 +226,16 @@ function isDraftApplyAccepted(value: unknown): value is DraftApplyAccepted {
   const record = asRecord(value);
   if (record === null) return false;
   return isString(record.version_id) && record.status === "processing";
+}
+
+function isDraftActivated(value: unknown): value is DraftActivated {
+  const record = asRecord(value);
+  if (record === null) return false;
+  return (
+    isString(record.persona_id) &&
+    isString(record.version_id) &&
+    isString(record.activated_at)
+  );
 }
 
 const GENERATION_MODES: Record<GenerationMode, true> = {
@@ -627,6 +638,17 @@ export const httpPersonaApi: PersonaApi = {
 
   applyDraft: (token, personaId, expectedRevision, idempotencyKey, signal) =>
     request(`${draftPath(personaId)}/apply`, token, isDraftApplyAccepted, {
+      method: "POST",
+      signal,
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+      },
+      body: JSON.stringify({ expected_revision: expectedRevision }),
+    }),
+
+  activateDraft: (token, personaId, expectedRevision, idempotencyKey, signal) =>
+    request(`${draftPath(personaId)}/activate`, token, isDraftActivated, {
       method: "POST",
       signal,
       headers: {

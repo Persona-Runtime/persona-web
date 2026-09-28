@@ -126,6 +126,16 @@ export interface DraftApplyAccepted {
   status: "processing";
 }
 
+/**
+ * POST draft/activate 200 응답. 색인이 끝난 초안이 캐릭터의 적용본이 됐다는 뜻이다.
+ * 서버는 이때 초안 슬롯을 비운다 — 이후 getDraft는 409 draft_not_started다.
+ */
+export interface DraftActivated {
+  persona_id: string;
+  version_id: string;
+  activated_at: string;
+}
+
 /** PATCH가 보내는 변경. expected_revision이 CAS 기준이다. */
 export interface DraftPatch {
   expected_revision: number;
@@ -317,6 +327,18 @@ export interface PersonaApi {
     idempotencyKey: string,
     signal?: AbortSignal,
   ): Promise<DraftApplyAccepted>;
+  /**
+   * 색인이 끝난 초안(can_activate=true)을 적용본으로 세운다. 색인(applyDraft)과 다른
+   * 동작이다. expected_revision이 다르면 409 revision_mismatch, 색인이 안 끝났거나
+   * 색인 뒤 자료가 바뀌었으면 409 not_activatable.
+   */
+  activateDraft(
+    token: SessionToken,
+    personaId: string,
+    expectedRevision: number,
+    idempotencyKey: string,
+    signal?: AbortSignal,
+  ): Promise<DraftActivated>;
   discardDraft(
     token: SessionToken,
     personaId: string,

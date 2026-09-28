@@ -1,6 +1,11 @@
 import { screen, waitFor } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
-import { ApiError, type Draft, type PersonaApi } from "../lib/types";
+import {
+  ApiError,
+  type Draft,
+  type DraftActivated,
+  type PersonaApi,
+} from "../lib/types";
 import {
   authenticate,
   persona,
@@ -547,4 +552,119 @@ test("초안 생성이 422 invalid_settings면 이름·소개 확인을 안내�
   ).toBeNull();
   expect(screen.getByLabelText("기본 소개")).toHaveValue("합성 소개");
   expect(screen.getByRole("button", { name: "초안 만들기" })).toBeEnabled();
+});
+
+/**
+ * 채팅에 적용(POST draft/activate).
+ *
+ * 누를 수 있는지는 서버 판정값 can_activate만 따르고, 성공하면 목록을 다시 조회해
+ * 캐릭터가 준비됨이 된 뒤에 채팅 이동 버튼을 보여준다.
+ */
+const activatableDraft: Draft = {
+  ...draftWithSource,
+  status: "ready",
+  revision: 3,
+  indexed_revision: 3,
+  indexed_at: "2026-09-10T00:00:00Z",
+  can_activate: true,
+};
+
+const readyPersona = {
+  ...persona,
+  status: "ready" as const,
+  active_version_id: activatableDraft.version_id,
+};
+
+test("can_activate가 false면 채팅에 적용 버튼이 비활성이고 요청을 보내지 않는다", async () => {
+  const activateDraft = vi.fn();
+  const { user } = renderApp({
+    api: personaApi({
+      listPersonas: vi
+        .fn()
+        .mockResolvedValue({ items: [persona], next_cursor: null }),
+      getDraft: vi.fn().mockResolvedValue(draftWithSource),
+      activateDraft,
+    }),
+  });
+
+  await openDraftScreen(user);
+
+  expect(screen.getByRole("button", { name: "채팅에 적용" })).toBeDisabled();
+  expect(activateDraft).not.toHaveBeenCalled();
+});
+
+test("채팅에 적용 성공이면 목록을 다시 조회해 준비됨과 채팅 이동 버튼을 보여준다", async () => {
+  // 준비: 첫 목록은 활성화 전, 재조회 목록은 적용본이 생긴 뒤의 캐릭터다.
+  const listPersonas = vi
+    .fn()
+    .mockResolvedValueOnce({ items: [persona], next_cursor: null })
+    .mockResolvedValue({ items: [readyPersona], next_cursor: null });
+  // 응답을 붙잡아 두고 요청 중 중복 클릭이 막히는지 본다.
+  let resolveActivate: (value: DraftActivated) => void = () => {};
+  const activateDraft = vi.fn(
+    () =>
+      new Promise<DraftActivated>((resolve) => {
+        resolveActivate = resolve;
+      }),
+  );
+  const getDraft = vi.fn().mockResolvedValue(activatableDraft);
+  const { user } = renderApp({
+    api: personaApi({ listPersonas, getDraft, activateDraft }),
+  });
+
+  await openDraftScreen(user);
+  const listCallsBefore = listPersonas.mock.calls.length;
+
+  // 실행: 연속 클릭
+  await user.click(screen.getByRole("button", { name: "채팅에 적용" }));
+  const pendingButton = screen.getByRole("button", { name: "적용 중…" });
+  expect(pendingButton).toBeDisabled();
+  await user.click(pendingButton);
+  expect(activateDraft).toHaveBeenCalledTimes(1);
+
+  resolveActivate({
+    persona_id: persona.id,
+    version_id: activatableDraft.version_id,
+    activated_at: "2026-09-10T00:01:00Z",
+  });
+
+  // 검증: 지금 초안 revision으로 요청했고, 목록을 다시 조회해 준비됨을 반영한다.
+  expect(activateDraft).toHaveBeenCalledWith(
+    expect.anything(),
+    persona.id,
+    activatableDraft.revision,
+    expect.any(String),
+    expect.anything(),
+  );
+  const chatLink = await screen.findByRole("link", { name: "채팅으로 이동" });
+  expect(chatLink).toHaveAttribute("href", `/personas/${persona.id}/chat`);
+  expect(screen.getByText(/캐릭터 상태: 준비됨/)).toBeInTheDocument();
+  expect(listPersonas.mock.calls.length).toBeGreaterThan(listCallsBefore);
+  // 서버가 초안 슬롯을 비웠으므로 초안을 다시 조회하지 않는다.
+  expect(getDraft).toHaveBeenCalledTimes(1);
+});
+
+test("채팅에 적용이 실패하면 오류를 보여주고 채팅 이동 버튼을 보여주지 않는다", async () => {
+  const activateDraft = vi
+    .fn()
+    .mockRejectedValue(new ApiError(409, "not_activatable"));
+  const { user } = renderApp({
+    api: personaApi({
+      listPersonas: vi
+        .fn()
+        .mockResolvedValue({ items: [persona], next_cursor: null }),
+      getDraft: vi.fn().mockResolvedValue(activatableDraft),
+      activateDraft,
+    }),
+  });
+
+  await openDraftScreen(user);
+  await user.click(screen.getByRole("button", { name: "채팅에 적용" }));
+
+  await screen.findByText(
+    "아직 활성화할 수 없습니다. 지금 내용으로 색인을 먼저 끝내주세요.",
+  );
+  expect(screen.queryByRole("link", { name: "채팅으로 이동" })).toBeNull();
+  // 다시 시도할 수 있도록 버튼이 돌아온다.
+  expect(screen.getByRole("button", { name: "채팅에 적용" })).toBeEnabled();
 });

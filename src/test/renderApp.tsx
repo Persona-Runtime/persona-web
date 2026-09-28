@@ -50,6 +50,7 @@ export function personaApi(overrides: Partial<PersonaApi> = {}): PersonaApi {
     getDraft: vi.fn().mockRejectedValue(new ApiError(404, "draft_not_found")),
     patchDraft: vi.fn(),
     applyDraft: vi.fn(),
+    activateDraft: vi.fn(),
     discardDraft: vi.fn().mockResolvedValue(undefined),
     createConversation: vi.fn(),
     listConversations: vi
