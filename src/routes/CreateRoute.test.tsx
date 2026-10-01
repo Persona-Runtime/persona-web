@@ -13,7 +13,7 @@ import {
 
 async function openCreateScreen(user: ReturnType<typeof renderApp>["user"]) {
   await authenticate(user);
-  await user.click(screen.getByRole("link", { name: "캐릭터 생성" }));
+  await user.click(screen.getByRole("link", { name: "새 캐릭터" }));
   await screen.findByLabelText("이름");
 }
 
@@ -32,7 +32,7 @@ test("빈 목록에서 생성하면 결과 화면으로 넘어가고 목록을 �
     await screen.findByText("아직 만든 캐릭터가 없습니다."),
   ).toBeInTheDocument();
 
-  await user.click(screen.getByRole("link", { name: "캐릭터 생성" }));
+  await user.click(screen.getByRole("link", { name: "새 캐릭터" }));
   await user.type(screen.getByLabelText("이름"), " 합성 모루 ");
   await user.click(screen.getByRole("button", { name: "생성" }));
 
@@ -214,7 +214,7 @@ test("이전 생성 결과가 남아 있어도 다음 제출의 응답을 기다
 
   // 생성 화면으로 다시 들어와 다른 이름을 제출하면, 그 제출이 실패했으므로
   // 첫 캐릭터로 넘어가지 않고 생성 화면에 남아 실패 이유를 보여줘야 한다.
-  await user.click(screen.getByRole("link", { name: "캐릭터 생성" }));
+  await user.click(screen.getByRole("link", { name: "새 캐릭터" }));
   await user.type(screen.getByLabelText("이름"), second.name);
   await user.click(screen.getByRole("button", { name: "생성" }));
 
@@ -242,9 +242,9 @@ test("생성 화면을 떠났다 돌아와 재전송해도 성공하면 결과 �
   await screen.findByRole("button", { name: "같은 요청 다시 전송" });
 
   // 목록으로 나갔다가 다시 들어와도 같은 시도의 재전송 수단이 남아 있어야 한다.
-  await user.click(screen.getByRole("link", { name: "← 목록으로" }));
+  await user.click(screen.getByRole("link", { name: "목록으로" }));
   await waitFor(() => expect(pathname()).toBe("/personas"));
-  await user.click(screen.getByRole("link", { name: "캐릭터 생성" }));
+  await user.click(screen.getByRole("link", { name: "새 캐릭터" }));
   await user.click(
     await screen.findByRole("button", { name: "같은 요청 다시 전송" }),
   );

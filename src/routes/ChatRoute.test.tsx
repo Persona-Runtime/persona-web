@@ -1,8 +1,9 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import {
   ApiError,
   type ChatEvent,
+  type Citation,
   type Conversation,
   type Draft,
   type Generation,
@@ -61,8 +62,9 @@ async function openChatScreen(user: ReturnType<typeof renderApp>["user"]) {
     await personaNav().findByRole("link", { name: /합성 모루/ }),
   );
   await screen.findByRole("heading", { name: "합성 모루" });
-  await user.click(screen.getByRole("link", { name: "대화" }));
-  await screen.findByRole("heading", { name: /대화/ });
+  await user.click(screen.getByRole("link", { name: "대화하기" }));
+  // 보조 패널에도 "대화 정보"·"대화" 제목이 있으므로 대화 화면 제목을 정확히 찾는다.
+  await screen.findByRole("heading", { name: `${persona.name} — 대화` });
 }
 
 /**
@@ -367,7 +369,7 @@ test("스트리밍 중에는 취소 버튼이 보이고 누르면 cancel API를 
   await user.type(input, "취소할 질문");
   await user.click(screen.getByRole("button", { name: "보내기" }));
 
-  const cancelButton = await screen.findByRole("button", { name: "응답 취소" });
+  const cancelButton = await screen.findByRole("button", { name: "중단" });
   await user.click(cancelButton);
 
   expect(cancelGeneration).toHaveBeenCalledWith(
@@ -408,7 +410,7 @@ test("cancel 응답이 cancel_requested(아직 미확정)면 turns로 확정하�
   await user.type(input, "취소할 질문");
   await user.click(screen.getByRole("button", { name: "보내기" }));
 
-  const cancelButton = await screen.findByRole("button", { name: "응답 취소" });
+  const cancelButton = await screen.findByRole("button", { name: "중단" });
   await user.click(cancelButton);
 
   await waitFor(() => expect(cancelGeneration).toHaveBeenCalledTimes(1));
@@ -832,4 +834,136 @@ test("서버가 QuestionTooLong으로 실패시키면 질문 길이 문제로 �
   ).toBeInTheDocument();
   // 모델 전체 문맥 한도 안내와 섞이지 않는다.
   expect(screen.queryByText(/모델이 한 번에 처리할 수 있는/)).toBeNull();
+});
+
+// ---------- W-0 디자인 전환: 표시만 바뀐 부분의 규칙 ----------
+
+/** 완료까지 한 번에 오는 짧은 응답. mode와 인용만 바꿔 쓴다. */
+function completedAnswer(mode: "mock" | "llm", citations: Citation[] = []) {
+  const events: ChatEvent[] = [
+    {
+      type: "meta",
+      data: {
+        generation_id: "g1",
+        conversation_id: conversation.id,
+        user_message_id: "u1",
+        assistant_message_id: "g1",
+        version_id: conversation.initial_version_id,
+        mode,
+      },
+    },
+    { type: "citations", data: { generation_id: "g1", items: citations } },
+    { type: "delta", data: { generation_id: "g1", index: 0, text: "합성 답" } },
+    {
+      type: "done",
+      data: { generation_id: "g1", status: "completed", finish_reason: "stop" },
+    },
+  ];
+  return streamingApi(events);
+}
+
+test("mock 응답을 관측하면 말풍선과 레일에 모의 응답 배지를 단다", async () => {
+  const { user } = renderApp({
+    api: readyChatApi({ startChatCompletion: completedAnswer("mock") }),
+  });
+
+  await openChatScreen(user);
+  // 아직 응답을 본 적이 없고 빌드도 mock이 아니면(테스트 환경) 배지를 단정하지 않는다.
+  expect(personaNav().queryByText("모의 응답")).toBeNull();
+
+  await user.type(await screen.findByLabelText("메시지"), "합성 질문");
+  await user.click(screen.getByRole("button", { name: "보내기" }));
+  await screen.findByText("합성 답");
+
+  expect(personaNav().getByText("모의 응답")).toBeInTheDocument();
+  const answer = screen.getByText("합성 답").closest('[data-role="assistant"]');
+  expect(answer).toHaveTextContent("모의 응답");
+});
+
+test("llm 응답에는 모의 응답 배지를 달지 않는다", async () => {
+  const { user } = renderApp({
+    api: readyChatApi({ startChatCompletion: completedAnswer("llm") }),
+  });
+
+  await openChatScreen(user);
+  await user.type(await screen.findByLabelText("메시지"), "합성 질문");
+  await user.click(screen.getByRole("button", { name: "보내기" }));
+  await screen.findByText("합성 답");
+
+  expect(screen.queryByText("모의 응답")).toBeNull();
+});
+
+test("참고 자료는 개수로 접어 두고 열면 title과 excerpt를 텍스트 그대로 보여준다", async () => {
+  const citation: Citation = {
+    id: "c1",
+    source_id: "s1",
+    version_id: conversation.initial_version_id,
+    title: "사건 · 도서관",
+    // 업로드 원문에서 온 문자열이다. 태그처럼 보여도 HTML로 해석하면 안 된다.
+    excerpt: "모루는 <b>도서관</b> 앞에서…",
+  };
+  const { user } = renderApp({
+    api: readyChatApi({
+      startChatCompletion: completedAnswer("llm", [citation]),
+    }),
+  });
+
+  await openChatScreen(user);
+  await user.type(await screen.findByLabelText("메시지"), "합성 질문");
+  await user.click(screen.getByRole("button", { name: "보내기" }));
+  await screen.findByText("합성 답");
+
+  const summary = screen.getByText("참고 자료 1개");
+  expect(summary.closest("details")).not.toHaveAttribute("open");
+  await user.click(summary);
+
+  expect(screen.getByText("사건 · 도서관")).toBeInTheDocument();
+  expect(screen.getByText("모루는 <b>도서관</b> 앞에서…")).toBeInTheDocument();
+  expect(document.querySelector(".citation__excerpt b")).toBeNull();
+});
+
+test("Enter는 보내고 Shift+Enter는 줄을 바꾼다", async () => {
+  const startChatCompletion = completedAnswer("llm");
+  const { user } = renderApp({ api: readyChatApi({ startChatCompletion }) });
+
+  await openChatScreen(user);
+  const input = await screen.findByLabelText("메시지");
+
+  await user.type(input, "첫 줄{Shift>}{Enter}{/Shift}둘째 줄");
+  expect(input).toHaveValue("첫 줄\n둘째 줄");
+  expect(startChatCompletion).not.toHaveBeenCalled();
+
+  await user.type(input, "{Enter}");
+  await waitFor(() => expect(startChatCompletion).toHaveBeenCalledTimes(1));
+  expect(startChatCompletion.mock.calls[0][2]).toBe("첫 줄\n둘째 줄");
+});
+
+test("한글 조합 중의 Enter는 글자 확정이라 보내지 않는다", async () => {
+  const startChatCompletion = completedAnswer("llm");
+  const { user } = renderApp({ api: readyChatApi({ startChatCompletion }) });
+
+  await openChatScreen(user);
+  const input = await screen.findByLabelText("메시지");
+  await user.type(input, "안녕");
+
+  // 표준 신호(isComposing)와 Safari가 쓰는 keyCode 229를 둘 다 막는다.
+  fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+  fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
+
+  expect(startChatCompletion).not.toHaveBeenCalled();
+  expect(input).toHaveValue("안녕");
+});
+
+test("대화 화면에서만 보조 패널에 현재 대화를 보여준다", async () => {
+  const { user } = renderApp({ api: readyChatApi() });
+
+  await openChatScreen(user);
+  const panel = await screen.findByRole("complementary", { name: "대화 정보" });
+  expect(within(panel).getByText(conversation.title)).toBeInTheDocument();
+  // 종류별 글자 수는 아직 알 수 없다 — 숫자를 지어내지 않는다.
+  expect(within(panel).getAllByText("아직 알 수 없음")).toHaveLength(4);
+
+  await user.click(screen.getByRole("link", { name: "자료 편집" }));
+  await screen.findByRole("heading", { name: /자료 편집/ });
+  expect(screen.queryByRole("complementary", { name: "대화 정보" })).toBeNull();
 });

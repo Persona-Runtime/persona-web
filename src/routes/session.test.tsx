@@ -53,7 +53,7 @@ test("새 목록 요청 뒤에 도착한 이전 목록 응답은 무시한다", 
   const { user } = renderApp({ api: personaApi({ listPersonas }) });
 
   await authenticate(user);
-  await user.click(screen.getByRole("link", { name: "캐릭터 생성" }));
+  await user.click(screen.getByRole("link", { name: "새 캐릭터" }));
   await user.type(screen.getByLabelText("이름"), "합성 모루");
   await user.click(screen.getByRole("button", { name: "생성" }));
   expect(
@@ -83,7 +83,7 @@ test("새 목록 성공 뒤에 도착한 이전 목록 실패는 화면을 바�
   const { user } = renderApp({ api: personaApi({ listPersonas }) });
 
   await authenticate(user);
-  await user.click(screen.getByRole("link", { name: "캐릭터 생성" }));
+  await user.click(screen.getByRole("link", { name: "새 캐릭터" }));
   await user.type(screen.getByLabelText("이름"), "합성 모루");
   await user.click(screen.getByRole("button", { name: "생성" }));
   expect(

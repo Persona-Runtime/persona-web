@@ -8,8 +8,8 @@ import { Link } from "react-router";
  */
 export function NotFoundRoute() {
   return (
-    <main className="shell">
-      <section className="panel">
+    <main className="entry">
+      <section className="entry__card">
         <h1>주소를 찾을 수 없습니다</h1>
         <p>입력한 주소에 해당하는 화면이 없습니다.</p>
         <Link className="text-button" to="/">

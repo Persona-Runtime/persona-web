@@ -2,11 +2,10 @@ import { nextStepFor } from "../lib/personaCopy";
 import type { PersonaStatus } from "../lib/types";
 
 /**
- * 상태를 경고가 아니라 다음 단계 안내로 보여준다.
+ * 스텝 바 아래의 한 줄 안내. 상태를 경고가 아니라 지금 할 일로 보여준다.
  *
- * 자료 입력·대화는 아직 만들지 않았으므로 여기서 버튼을 약속하지 않는다.
- * 비활성 버튼도 곧 열린다는 인상을 주므로 문장으로만 안내한다.
+ * 버튼은 개요 상단의 "자료 편집"·"대화하기"가 맡으므로 여기서는 문장만 둔다.
  */
 export function NextStepGuide({ status }: { status: PersonaStatus }) {
-  return <p className="guide">{nextStepFor(status)}</p>;
+  return <p className="guide guide--one-line">{nextStepFor(status)}</p>;
 }

@@ -30,7 +30,7 @@ test("삭제 중을 포함한 세 개면 생성 버튼을 막는다", async () =
   await authenticate(user);
 
   expect(await screen.findByText("삭제 중")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "캐릭터 생성" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "새 캐릭터" })).toBeDisabled();
   expect(
     screen.getByText("캐릭터는 최대 3개까지 만들 수 있습니다."),
   ).toBeInTheDocument();
@@ -49,7 +49,7 @@ test("보유 수는 목록 응답을 근거로 표시한다", async () => {
   await authenticate(user);
 
   expect(await screen.findByText("보유 1/3")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "캐릭터 생성" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "새 캐릭터" })).toBeInTheDocument();
 });
 
 test("목록이 잘려 있으면 개수를 단정하지 않고 생성도 막는다", async () => {
@@ -66,7 +66,7 @@ test("목록이 잘려 있으면 개수를 단정하지 않고 생성도 막는�
   expect(
     await screen.findByText("보유 개수를 확인할 수 없습니다."),
   ).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "캐릭터 생성" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "새 캐릭터" })).toBeDisabled();
   expect(
     screen.getByText(
       "목록이 완전하지 않아 생성 가능 여부를 확인할 수 없습니다.",
@@ -163,7 +163,7 @@ test("목록으로 돌아가면 직전에 보던 항목으로 포커스가 복�
   await user.click(link);
   await waitFor(() => expect(pathname()).toBe(`/personas/${persona.id}`));
 
-  await user.click(screen.getByRole("link", { name: "← 목록으로" }));
+  await user.click(screen.getByRole("link", { name: "목록으로" }));
 
   await waitFor(() => expect(pathname()).toBe("/personas"));
   await waitFor(() =>

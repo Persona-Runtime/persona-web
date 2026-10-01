@@ -4,8 +4,10 @@ import { NextStepGuide } from "../components/NextStepGuide";
 import { PersonaAvatar } from "../components/PersonaAvatar";
 import { RetryNotice } from "../components/RetryNotice";
 import { StatusBadge } from "../components/StatusBadge";
+import { StepBar } from "../components/StepBar";
 import { WorkspaceHeading } from "../components/WorkspaceHeading";
 import { formatCreatedAt } from "../lib/personaCopy";
+import { personaProgress } from "../lib/progress";
 import { useStudio } from "../lib/studioContext";
 import type { Persona } from "../lib/types";
 import { useDeletePersona } from "../lib/useDeletePersona";
@@ -153,6 +155,8 @@ function DeletePersonaSection({ persona }: { persona: Persona }) {
  * 선택한 캐릭터의 개요.
  *
  * 서버에 상세 조회 API가 아직 없으므로 목록 응답에 있는 값만 보여준다.
+ * 기본 소개·경고 카드는 상세 초안(getDraft)에만 있는 값이라 이 화면에서는 그리지
+ * 않는다 — 카드를 그리려고 새 요청을 보내지 않는 것이 이번 디자인 전환의 범위다.
  * 소개문·이미지·최근 대화처럼 서버가 주지 않는 내용은 만들지 않는다.
  */
 export function PersonaOverviewRoute() {
@@ -179,13 +183,41 @@ export function PersonaOverviewRoute() {
   }
 
   const justCreated = arrivedFromCreation(location.state);
+  const progress = personaProgress(persona);
 
   return (
-    <>
-      <div className="workspace__identity">
-        <PersonaAvatar name={persona.name} />
-        <WorkspaceHeading id="workspace-title">{persona.name}</WorkspaceHeading>
-      </div>
+    <div className="overview">
+      <header className="overview__header">
+        <PersonaAvatar name={persona.name} size={72} />
+        <div className="overview__identity">
+          <WorkspaceHeading id="workspace-title">
+            {persona.name}
+          </WorkspaceHeading>
+          <dl className="overview__facts">
+            <div>
+              <dt className="visually-hidden">상태</dt>
+              <dd>
+                <StatusBadge status={persona.status} />
+              </dd>
+            </div>
+            <div>
+              <dt>생성일</dt>
+              <dd>{formatCreatedAt(persona.created_at)}</dd>
+            </div>
+          </dl>
+        </div>
+        <nav className="overview__actions" aria-label="자료·대화">
+          <Link
+            className="button button--secondary"
+            to={`/personas/${persona.id}/draft`}
+          >
+            자료 편집
+          </Link>
+          <Link className="button" to={`/personas/${persona.id}/chat`}>
+            대화하기
+          </Link>
+        </nav>
+      </header>
 
       {justCreated && (
         <p className="success" role="status">
@@ -193,27 +225,8 @@ export function PersonaOverviewRoute() {
         </p>
       )}
 
-      <dl className="facts">
-        <dt>상태</dt>
-        <dd>
-          <StatusBadge status={persona.status} />
-        </dd>
-        <dt>생성일</dt>
-        <dd>{formatCreatedAt(persona.created_at)}</dd>
-      </dl>
-
+      {progress !== null && <StepBar progress={progress} />}
       <NextStepGuide status={persona.status} />
-
-      <nav className="workspace-nav" aria-label="자료·대화">
-        <Link className="text-button" to={`/personas/${persona.id}/draft`}>
-          자료 편집
-        </Link>
-        <Link className="text-button" to={`/personas/${persona.id}/chat`}>
-          대화
-        </Link>
-      </nav>
-
-      <DeletePersonaSection key={persona.id} persona={persona} />
 
       {justCreated && list.state === "error" && (
         <p className="notice">
@@ -221,6 +234,13 @@ export function PersonaOverviewRoute() {
           주세요.
         </p>
       )}
-    </>
+
+      {/* 되돌릴 수 없는 동작은 맨 아래에 접어 둔다. 자주 쓰지 않는 버튼이 화면 위쪽의
+          주 행동과 같은 무게로 보이지 않게 하려는 것이다. 열면 기존 확인 UI 그대로다. */}
+      <details className="manage">
+        <summary>캐릭터 관리</summary>
+        <DeletePersonaSection key={persona.id} persona={persona} />
+      </details>
+    </div>
   );
 }
