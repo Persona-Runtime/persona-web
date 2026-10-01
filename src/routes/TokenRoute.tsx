@@ -31,11 +31,9 @@ export function TokenRoute() {
   // 넘어갈 화면이라, 입력창을 보여 주면 "무엇을 넣어야 하나"를 고민하게 만든다.
   if (authMode === "probing") {
     return (
-      <main className="shell shell--entry">
-        <section className="panel">
+      <main className="entry">
+        <section className="entry__card">
           <ServiceIntro />
-        </section>
-        <section className="panel">
           <p className="guide" role="status">
             접속 상태를 확인하는 중입니다…
           </p>
@@ -45,23 +43,59 @@ export function TokenRoute() {
   }
 
   return (
-    <main className="shell shell--entry">
-      <section className="panel">
+    <main className="entry">
+      <section className="entry__card">
         <ServiceIntro />
+        {probeError === null ? (
+          <div className="entry__form">
+            <AuthTabs />
+            <h2 id="token-title" className="visually-hidden">
+              접속 토큰 입력
+            </h2>
+            <TokenForm />
+          </div>
+        ) : (
+          // 401이 아니라 서버·네트워크 문제로 판정을 못 했다. 토큰을 요구하면
+          // 사용자가 넣을 수 없는 값을 찾게 되므로 재시도만 안내한다.
+          <div className="entry__form">
+            <h2 id="probe-error-title" className="entry__subtitle">
+              접속 상태를 확인하지 못했습니다
+            </h2>
+            <RetryNotice message={probeError} onRetry={retryProbe} />
+          </div>
+        )}
       </section>
-      {probeError === null ? (
-        <section className="panel" aria-labelledby="token-title">
-          <h2 id="token-title">접속 토큰 입력</h2>
-          <TokenForm />
-        </section>
-      ) : (
-        // 401이 아니라 서버·네트워크 문제로 판정을 못 했다. 토큰을 요구하면
-        // 사용자가 넣을 수 없는 값을 찾게 되므로 재시도만 안내한다.
-        <section className="panel" aria-labelledby="probe-error-title">
-          <h2 id="probe-error-title">접속 상태를 확인하지 못했습니다</h2>
-          <RetryNotice message={probeError} onRetry={retryProbe} />
-        </section>
-      )}
     </main>
+  );
+}
+
+/**
+ * "로그인 | 회원가입" 탭 자리.
+ *
+ * 계정 로그인 폼은 A-2에서 이 자리에 들어온다. 지금은 모양만 그리고 두 버튼 모두
+ * 비활성이다 — 눌러도 아무 일이 없는 활성 탭을 두면 기능이 있는 것처럼 보인다.
+ * 아래 토큰 입력이 지금 실제로 쓰는 접속 방법이다.
+ */
+function AuthTabs() {
+  return (
+    <div className="auth-tabs" aria-label="계정 로그인(준비 중)" role="group">
+      <button
+        type="button"
+        className="auth-tabs__tab"
+        data-active="true"
+        disabled
+        aria-disabled="true"
+      >
+        로그인
+      </button>
+      <button
+        type="button"
+        className="auth-tabs__tab"
+        disabled
+        aria-disabled="true"
+      >
+        회원가입
+      </button>
+    </div>
   );
 }

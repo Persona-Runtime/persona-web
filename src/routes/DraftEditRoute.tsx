@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import { CharCounter } from "../components/CharCounter";
 import { DraftStatusBadge } from "../components/DraftStatusBadge";
+import { Icon } from "../components/Icon";
 import { RetryNotice } from "../components/RetryNotice";
 import { WorkspaceHeading } from "../components/WorkspaceHeading";
 import {
@@ -306,23 +307,21 @@ function DraftEditForm({
     !saving &&
     draftState.activateState !== "loading";
 
+  const indexing =
+    draftState.applyState === "loading" || draft.status === "processing";
+
   return (
-    <>
+    <div className="draft-edit">
       <WorkspaceHeading id="workspace-title">
         {personaName} — 자료 편집
       </WorkspaceHeading>
 
-      <p className="guide">
-        순서: 저장 → 색인 → 채팅에 적용. 자료를 고치면 다시 저장한 뒤 색인해야
-        합니다.
-      </p>
-
-      <div className="facts">
+      <div className="draft-edit__status">
         <DraftStatusBadge status={draft.status} />
         {/* status(최신 적용 시도)와 indexed_revision(마지막 색인 성공)은 계약상
             다를 수 있다 — 실패 뒤에도 이전 색인이 살아 있음을 보여주려면 같은
             배지로 합치지 않고 따로 표시해야 한다. */}
-        <p className="guide">
+        <span className="draft-edit__indexed">
           {draft.indexed_revision === null
             ? "아직 색인된 자료 없음"
             : `현재 색인: rev ${draft.indexed_revision}${
@@ -330,20 +329,20 @@ function DraftEditForm({
                   ? ""
                   : ` (${formatCreatedAt(draft.indexed_at)})`
               }`}
-        </p>
+        </span>
+        <span className="draft-edit__order">
+          순서: 저장 → 색인 → 채팅에 적용
+        </span>
       </div>
 
       {draft.can_activate && (
-        <p className="guide">이 색인 결과는 적용본으로 활성화할 수 있습니다.</p>
+        <p className="success">
+          이 색인 결과는 적용본으로 활성화할 수 있습니다.
+        </p>
       )}
 
       {draft.status === "failed" && (
-        <p className="notice">{draftFailedMessage(draft.error_code)}</p>
-      )}
-      {draft.status === "processing" && (
-        <p className="guide" role="status">
-          자료를 처리하고 있습니다. 완료되면 자동으로 갱신됩니다.
-        </p>
+        <p className="error">{draftFailedMessage(draft.error_code)}</p>
       )}
 
       {draftState.saveConflict && (
@@ -354,124 +353,181 @@ function DraftEditForm({
         />
       )}
 
-      <form onSubmit={submit}>
-        <label htmlFor="draft-name">이름</label>
-        <input
-          id="draft-name"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-        />
-
-        <label htmlFor="draft-profile">기본 소개</label>
-        <textarea
-          id="draft-profile"
-          value={profile}
-          onChange={(event) => setProfile(event.target.value)}
-        />
-        <CharCounter length={profileLen} max={PROFILE_MAX} blocking />
-        <p className={profileMissing ? "counter counter--over" : "counter"}>
-          기본 소개는 필수입니다. 비워두면 저장할 수 없습니다.
-        </p>
-
-        <label htmlFor="draft-body">
-          본문 — corpus-tools --format paste 출력을 그대로
-        </label>
-        <textarea
-          id="draft-body"
-          value={body}
-          onChange={(event) => setBody(event.target.value)}
-        />
-        <CharCounter length={bodyLen} max={BODY_MAX} />
-
-        <label htmlFor="draft-speech">대사 — 한 줄에 화자: 대사</label>
-        <textarea
-          id="draft-speech"
-          value={speech}
-          onChange={(event) => setSpeech(event.target.value)}
-        />
-        <CharCounter length={speechLen} max={SPEECH_MAX} />
-        {badSpeechLines > 0 && (
-          <p className="counter">
-            형식과 다른 줄 {badSpeechLines}개 — "화자: 대사" 형식을 확인해주세요
-            (저장은 막지 않습니다)
-          </p>
-        )}
-
-        <button
-          type="button"
-          className="secondary"
-          onClick={() => setShowOptional((value) => !value)}
-          aria-expanded={showOptional}
-        >
-          선택 항목 {showOptional ? "접기" : "펼치기"}(관계·능력)
-        </button>
-        {showOptional && (
-          <div className="optional-sources">
-            <label htmlFor="draft-relationships">관계</label>
-            <textarea
-              id="draft-relationships"
-              value={relationships}
-              onChange={(event) => setRelationships(event.target.value)}
+      {/* 저장 버튼은 아래 고정 액션 바에 있고 form 속성으로 이 폼을 제출한다.
+          색인·채팅에 적용과 한 줄에 두려는 배치 변경이며, 제출 경로(submit)는 같다. */}
+      {/* 카드 section에 aria-labelledby를 달지 않는다. "본문·대사" 같은 카드 제목이
+          그 안 입력의 라벨("본문 — …")과 겹쳐, 라벨로 입력을 찾는 보조기술·테스트가
+          카드와 입력을 구분하지 못한다. 카드 구분은 h2 제목으로 충분하다. */}
+      <form id="draft-form" className="draft-form" onSubmit={submit}>
+        <section className="card">
+          <h2 className="card__title">이름·기본 소개</h2>
+          <div className="field">
+            <label htmlFor="draft-name">이름</label>
+            <input
+              id="draft-name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
             />
-            <CharCounter length={relationshipsLen} max={OPTIONAL_MAX} />
-
-            <label htmlFor="draft-abilities">능력</label>
-            <textarea
-              id="draft-abilities"
-              value={abilities}
-              onChange={(event) => setAbilities(event.target.value)}
-            />
-            <CharCounter length={abilitiesLen} max={OPTIONAL_MAX} />
           </div>
-        )}
+          <div className="field">
+            <label htmlFor="draft-profile">기본 소개</label>
+            <textarea
+              id="draft-profile"
+              value={profile}
+              onChange={(event) => setProfile(event.target.value)}
+            />
+            <div className="field__foot">
+              <p
+                className={profileMissing ? "counter counter--over" : "counter"}
+              >
+                기본 소개는 필수입니다. 비워두면 저장할 수 없습니다.
+              </p>
+              <CharCounter length={profileLen} max={PROFILE_MAX} blocking />
+            </div>
+          </div>
+        </section>
 
-        <CharCounter length={totalLen} max={TOTAL_MAX} />
+        <section className="card">
+          <h2 className="card__title">본문·대사</h2>
+          <div className="field">
+            <label htmlFor="draft-body">
+              본문 — corpus-tools --format paste 출력을 그대로
+            </label>
+            <textarea
+              id="draft-body"
+              className="textarea--tall"
+              value={body}
+              onChange={(event) => setBody(event.target.value)}
+            />
+            <div className="field__foot">
+              <CharCounter length={bodyLen} max={BODY_MAX} />
+            </div>
+          </div>
+          <div className="field">
+            <label htmlFor="draft-speech">대사 — 한 줄에 화자: 대사</label>
+            <textarea
+              id="draft-speech"
+              className="textarea--tall"
+              value={speech}
+              onChange={(event) => setSpeech(event.target.value)}
+            />
+            <div className="field__foot">
+              {badSpeechLines > 0 && (
+                <p className="counter">
+                  형식과 다른 줄 {badSpeechLines}개 — "화자: 대사" 형식을
+                  확인해주세요 (저장은 막지 않습니다)
+                </p>
+              )}
+              <CharCounter length={speechLen} max={SPEECH_MAX} />
+            </div>
+          </div>
+        </section>
+
+        <section className="card">
+          <h2 className="card__title">관계·능력</h2>
+          <button
+            type="button"
+            className="disclosure"
+            onClick={() => setShowOptional((value) => !value)}
+            aria-expanded={showOptional}
+          >
+            <Icon name="chevron" size={16} />
+            선택 항목 {showOptional ? "접기" : "펼치기"}(관계·능력)
+          </button>
+          {showOptional && (
+            <div className="optional-sources">
+              <div className="field">
+                <label htmlFor="draft-relationships">관계</label>
+                <textarea
+                  id="draft-relationships"
+                  value={relationships}
+                  onChange={(event) => setRelationships(event.target.value)}
+                />
+                <div className="field__foot">
+                  <CharCounter length={relationshipsLen} max={OPTIONAL_MAX} />
+                </div>
+              </div>
+              <div className="field">
+                <label htmlFor="draft-abilities">능력</label>
+                <textarea
+                  id="draft-abilities"
+                  value={abilities}
+                  onChange={(event) => setAbilities(event.target.value)}
+                />
+                <div className="field__foot">
+                  <CharCounter length={abilitiesLen} max={OPTIONAL_MAX} />
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+
+        <div className="draft-form__total">
+          <span>전체</span>
+          <CharCounter length={totalLen} max={TOTAL_MAX} />
+        </div>
 
         {draftState.saveError !== null && (
           <div className="error" role="alert">
             <p>{draftState.saveError}</p>
           </div>
         )}
-
-        <button type="submit" disabled={!canSave}>
-          {draftState.saveState === "loading" ? "저장 중…" : "저장"}
-        </button>
       </form>
 
-      {unsaved && (
-        <p className="notice" role="status">
-          저장하지 않은 변경이 있습니다. 먼저 저장하세요 — 색인과 채팅에 적용은
-          저장된 내용으로만 진행됩니다.
-        </p>
-      )}
-
-      {draftState.applyError !== null && (
-        <div className="error" role="alert">
-          <p>{draftState.applyError}</p>
+      <div className="action-bar">
+        {draft.status === "processing" && (
+          <p className="action-bar__strip" role="status">
+            색인 중 · 자료를 처리하고 있습니다. 완료되면 자동으로 갱신됩니다.
+          </p>
+        )}
+        {unsaved && (
+          <p className="notice" role="status">
+            저장하지 않은 변경이 있습니다. 먼저 저장하세요 — 색인과 채팅에
+            적용은 저장된 내용으로만 진행됩니다.
+          </p>
+        )}
+        {draftState.applyError !== null && (
+          <div className="error" role="alert">
+            <p>{draftState.applyError}</p>
+          </div>
+        )}
+        {/* 활성화(POST draft/activate)는 색인 결과를 캐릭터의 적용본으로 세운다. 누를 수
+            있는지는 서버 판정값 can_activate만 따른다 — 화면이 조건을 다시 계산하면
+            서버의 활성화 규칙과 어긋날 수 있다. */}
+        {draftState.activateError !== null && (
+          <div className="error" role="alert">
+            <p>{draftState.activateError}</p>
+          </div>
+        )}
+        <div className="action-bar__buttons">
+          <button
+            type="submit"
+            form="draft-form"
+            className="button--secondary"
+            disabled={!canSave}
+          >
+            {draftState.saveState === "loading" ? "저장 중…" : "저장"}
+          </button>
+          <button
+            type="button"
+            className="button--secondary"
+            onClick={draftState.apply}
+            disabled={!canApply}
+          >
+            {indexing ? "색인 중…" : "색인"}
+          </button>
+          <button
+            type="button"
+            onClick={() => draftState.activate(onActivated)}
+            disabled={!canActivate}
+          >
+            {draftState.activateState === "loading"
+              ? "적용 중…"
+              : "채팅에 적용"}
+          </button>
         </div>
-      )}
-      <button type="button" onClick={draftState.apply} disabled={!canApply}>
-        {draftState.applyState === "loading" || draft.status === "processing"
-          ? "색인 중…"
-          : "색인"}
-      </button>
-
-      {/* 활성화(POST draft/activate)는 색인 결과를 캐릭터의 적용본으로 세운다. 누를 수
-          있는지는 서버 판정값 can_activate만 따른다 — 화면이 조건을 다시 계산하면
-          서버의 활성화 규칙과 어긋날 수 있다. */}
-      {draftState.activateError !== null && (
-        <div className="error" role="alert">
-          <p>{draftState.activateError}</p>
-        </div>
-      )}
-      <button
-        type="button"
-        onClick={() => draftState.activate(onActivated)}
-        disabled={!canActivate}
-      >
-        {draftState.activateState === "loading" ? "적용 중…" : "채팅에 적용"}
-      </button>
-    </>
+      </div>
+    </div>
   );
 }
 

@@ -7,9 +7,11 @@
  *
  * id가 아니라 이름을 쓰는 이유: 생성 미리보기 시점에는 아직 서버가 발급한 id가 없다.
  * id 기준이면 미리보기 색과 생성 직후 카드 색이 달라져 다른 캐릭터처럼 보인다.
+ * (W-0 디자인 전환 지시문은 "id 해시"라고 적었지만 같은 문장에서 이 결정 방식을
+ * 유지하라고 했으므로 이름 기준을 그대로 둔다.)
  */
 
-/** styles/tokens.css에 정의한 아바타 색 쌍의 개수와 맞춰야 한다. */
+/** styles/tokens.css에 정의한 아바타 색(--avatar-0..5)의 개수와 맞춰야 한다. */
 export const ACCENT_COUNT = 6;
 
 export function personaAccent(name: string): number {

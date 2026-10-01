@@ -1,5 +1,8 @@
 import { personaAccent, personaInitial } from "../lib/avatar";
 
+/** 화면별로 쓰는 아바타 크기(px). 임의 숫자를 받지 않고 디자인에서 정한 단계만 허용한다. */
+export type AvatarSize = 32 | 40 | 52 | 72;
+
 /**
  * 캐릭터 아바타.
  *
@@ -8,11 +11,18 @@ import { personaAccent, personaInitial } from "../lib/avatar";
  *
  * 이름은 바로 옆 텍스트가 읽어주므로 이 요소는 보조기술에서 숨긴다.
  */
-export function PersonaAvatar({ name }: { name: string }) {
+export function PersonaAvatar({
+  name,
+  size = 40,
+}: {
+  name: string;
+  size?: AvatarSize;
+}) {
   return (
     <span
       className="avatar"
       data-accent={personaAccent(name)}
+      data-size={size}
       aria-hidden="true"
     >
       {personaInitial(name)}

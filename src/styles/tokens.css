@@ -1,60 +1,75 @@
 /*
  * 디자인 토큰.
  *
- * 색·간격·모서리 값을 여기서만 정한다. 화면마다 hex를 직접 적으면 같은 의미의 색이
- * 조금씩 어긋나고, 나중에 한 곳만 바꾸는 것이 불가능해진다.
+ * 색·간격·모서리·글자 크기를 여기서만 정한다. 화면마다 hex를 직접 적으면 같은 의미의
+ * 색이 조금씩 어긋나고, 나중에 한 곳만 바꾸는 것이 불가능해진다.
  *
- * 강조색은 하나(--accent)만 쓴다. 상태 색은 배지와 알림처럼 의미가 있는 자리에만
- * 쓰고, 색만으로 뜻을 전달하지 않도록 항상 텍스트 라벨을 함께 둔다.
+ * 강조색은 하나(--accent, 틸)만 쓴다. warn(앰버)·danger(로즈)는 상태 배지·알림처럼
+ * 의미가 있는 자리에만 쓰고, 색만으로 뜻을 전달하지 않도록 항상 텍스트 라벨을 함께 둔다.
+ * *-ink는 같은 계열의 *-soft 배경 위에 올리는 글자색이다(대비 6.5:1 이상).
  */
 :root {
-  --bg: #f6f7f9;
+  --font-sans:
+    "IBM Plex Sans KR", system-ui, -apple-system, "Apple SD Gothic Neo",
+    sans-serif;
+
+  --ground: #eef1f4;
   --surface: #ffffff;
-  --surface-muted: #f1f3f6;
-  --border: #e3e6ec;
-  --text: #1e293b;
-  --text-muted: #5b6577;
+  --surface-2: #f7f8fa;
+  --line: #dde3ea;
+  --line-strong: #b9c4cf;
+  --ink: #111827;
+  --muted: #5b6572;
 
-  --accent: #3b5bdb;
-  --accent-strong: #2f49b2;
-  --accent-soft: #eef1fd;
+  --accent: #0e7c7b;
+  --accent-ink: #0a5c5b;
+  --accent-soft: #ddf2f0;
+  --warn: #b45309;
+  --warn-ink: #7c3a0a;
+  --warn-soft: #fdebd2;
+  --danger: #be123c;
+  --danger-ink: #9f1239;
+  --danger-soft: #fde2e8;
 
-  --danger: #991b1b;
-  --danger-soft: #fef2f2;
-  --warn: #92400e;
-  --warn-soft: #fffbeb;
-  --ok: #166534;
-  --ok-soft: #f0fdf4;
+  --radius-s: 8px;
+  --radius-m: 12px;
+  --radius-l: 16px;
+  --radius-xl: 20px;
 
-  --radius-sm: 0.5rem;
-  --radius-md: 0.75rem;
-  --radius-lg: 1rem;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
 
-  --space-1: 0.25rem;
-  --space-2: 0.5rem;
-  --space-3: 0.75rem;
-  --space-4: 1rem;
-  --space-5: 1.5rem;
-  --space-6: 2rem;
-
-  --shadow-card: 0 1px 3px rgb(15 23 42 / 8%);
-  --focus-ring: 0 0 0 3px rgb(59 91 219 / 30%);
+  --text-xs: 11px;
+  --text-s: 12px;
+  --text-m: 14px;
+  --text-l: 16px;
+  --text-xl: 18px;
+  --text-2xl: 26px;
 
   /*
-   * 캐릭터별 아바타 색. HSL을 돌려 만들지 않고 여섯 쌍을 고정한다.
-   * 색상환을 회전시키면 색에 따라 글자 대비가 들쭉날쭉해져 확인할 수 없다.
-   * 쌍의 개수는 lib/avatar.ts의 ACCENT_COUNT와 맞춰야 한다.
+   * 캐릭터별 아바타 색. 흰 글자를 올리므로 흰색 대비 4.5:1 이상인 값만 고른다
+   * (2026-10-01 계산: 틸 5.01, 인디고 6.29, 앰버 5.02, 로즈 6.29, 올리브 4.99,
+   * 바이올렛 5.70). 개수는 lib/avatar.ts의 ACCENT_COUNT와 맞춰야 한다.
    */
-  --accent-0-bg: #e7ecfd;
-  --accent-0-fg: #2b3f9e;
-  --accent-1-bg: #e6f4ea;
-  --accent-1-fg: #1f6b3f;
-  --accent-2-bg: #fdeceb;
-  --accent-2-fg: #9e2f2a;
-  --accent-3-bg: #fdf3e0;
-  --accent-3-fg: #8a5a12;
-  --accent-4-bg: #eae9fb;
-  --accent-4-fg: #4b3ba0;
-  --accent-5-bg: #e3f2f6;
-  --accent-5-fg: #1c5f72;
+  --avatar-0: #0e7c7b;
+  --avatar-1: #4f46e5;
+  --avatar-2: #b45309;
+  --avatar-3: #be123c;
+  --avatar-4: #4d7c0f;
+  --avatar-5: #7c3aed;
+}
+
+/*
+ * 어두운 테마는 2차 작업이다. 이번에는 변수를 덮어쓸 자리만 만들어 두고 값은 라이트와
+ * 같게 둔다 — 여기 값을 반쯤 채우면 일부 화면만 어두워져 읽기 어려운 조합이 생긴다.
+ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: light;
+  }
 }

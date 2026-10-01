@@ -18,7 +18,7 @@ export function RequireSession() {
   // 되돌릴 수도 없다) 토큰 화면이 한 프레임 깜빡인다.
   if (authMode === "probing") {
     return (
-      <main className="shell shell--entry">
+      <main className="entry">
         <p className="guide" role="status">
           접속 상태를 확인하는 중입니다…
         </p>

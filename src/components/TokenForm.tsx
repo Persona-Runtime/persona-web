@@ -17,8 +17,10 @@ export function TokenForm() {
     void authenticate(tokenInput);
   };
 
+  // 안내 문구는 짧지만 뜻은 전과 같다: 토큰은 이 탭의 메모리에만 있고, 새로고침하면
+  // 사라져 다시 입력해야 한다.
   return (
-    <form onSubmit={submit}>
+    <form className="token-form" onSubmit={submit}>
       <label htmlFor="token">토큰</label>
       <input
         id="token"
@@ -29,7 +31,7 @@ export function TokenForm() {
         onChange={(event) => setTokenInput(event.target.value)}
       />
       <p className="hint" id="token-hint">
-        토큰은 이 탭의 메모리에만 보관되며, 새로고침하면 다시 입력해야 합니다.
+        로그인 상태는 이 탭에서만 유지돼요.
       </p>
       {authError !== null && (
         <p className="error" role="alert">

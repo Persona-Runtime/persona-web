@@ -1,27 +1,33 @@
+import { PersonaAvatar } from "./PersonaAvatar";
+
+/** 접속 화면 상단 장식용 합성 이름. 실제 캐릭터가 아니며 색 세 개를 보여주려는 용도다. */
+const DECORATIVE_NAMES = ["가람", "누리", "다온"] as const;
+
 /**
  * 접속 화면의 서비스 소개.
  *
- * 지금 되는 것과 아직 아닌 것을 문장으로 나눠 적는다. 아직 만들지 않은 기능을
- * 메뉴나 버튼으로 미리 배치하면 눌러본 뒤에야 없다는 걸 알게 된다.
+ * 무엇을 하는 서비스인지 한 문장으로만 말한다. 지금 되는 기능 목록은 로그인 뒤 레일과
+ * 각 화면의 상태 배지가 보여주므로 여기서 다시 길게 나열하지 않는다. 아직 만들지 않은
+ * 기능을 메뉴나 버튼으로 미리 배치하지 않는 원칙은 그대로다.
  */
 export function ServiceIntro() {
   return (
     <div className="intro">
-      <p className="eyebrow">Persona Runtime</p>
-      <h1>내 자료로 만든 캐릭터와 대화하는 서비스</h1>
+      {/* 장식이다. 아바타 각각이 aria-hidden이라 읽히지 않는다. */}
+      <div className="intro__avatars">
+        {DECORATIVE_NAMES.map((name) => (
+          <PersonaAvatar key={name} name={name} size={40} />
+        ))}
+      </div>
+      <p className="intro__product">Persona Runtime</p>
+      <h1 className="intro__title">
+        내 자료로 만든 캐릭터와
+        <br />
+        대화하기
+      </h1>
       <p className="intro__lead">
-        텍스트 자료로 캐릭터를 만들고, 그 자료를 참고하는 캐릭터와 한국어로
-        대화하는 것이 목표입니다.
+        텍스트 자료를 붙여넣으면, 그 자료만 참고해서 답하는 캐릭터가 만들어져요.
       </p>
-      <dl className="intro__status">
-        <dt>지금 할 수 있는 일</dt>
-        <dd>
-          캐릭터 만들기, 내 캐릭터 목록과 준비 상태 확인, 캐릭터 삭제(서버에
-          삭제 기능이 배포된 뒤 사용 가능)
-        </dd>
-        <dt>아직 준비 중</dt>
-        <dd>자료 업로드와 처리, 설정 편집, 대화</dd>
-      </dl>
     </div>
   );
 }

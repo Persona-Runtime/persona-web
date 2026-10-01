@@ -8,16 +8,23 @@ import {
   waitForTokenForm,
 } from "../test/renderApp";
 
-test("접속 화면은 지금 되는 기능과 준비 중인 기능을 함께 안내한다", async () => {
+test("접속 화면은 서비스를 한 줄로 소개하고 준비 중인 로그인 탭은 누를 수 없게 둔다", async () => {
   renderApp();
 
   // 토큰 폼은 부트스트랩 프로브가 401을 받은 뒤에야 나타난다.
   expect(
     await screen.findByRole("heading", { name: "접속 토큰 입력" }),
   ).toBeInTheDocument();
-  expect(screen.getByText("지금 할 수 있는 일")).toBeInTheDocument();
-  expect(screen.getByText("아직 준비 중")).toBeInTheDocument();
-  // 준비 중인 기능은 문장으로만 안내하고 눌러볼 수 있는 요소로 만들지 않는다.
+  expect(
+    screen.getByRole("heading", { name: /내 자료로 만든 캐릭터와/ }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText("로그인 상태는 이 탭에서만 유지돼요."),
+  ).toBeInTheDocument();
+  // 계정 로그인 폼은 A-2에서 들어온다. 그 전에는 탭 모양만 있고 누를 수 없다.
+  expect(screen.getByRole("button", { name: "로그인" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "회원가입" })).toBeDisabled();
+  // 준비 중인 기능은 눌러볼 수 있는 요소로 만들지 않는다.
   expect(
     screen.queryByRole("button", { name: /업로드|대화|채팅|삭제/ }),
   ).toBeNull();
