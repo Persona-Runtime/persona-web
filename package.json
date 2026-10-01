@@ -15,7 +15,8 @@
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
     "container:verify": "bash scripts/verify-container.sh",
-    "test:scripts": "bash scripts/check-image-listing.sh --self-test"
+    "test:scripts": "bash scripts/check-image-listing.sh --self-test",
+    "fonts:generate": "node scripts/generate-font-css.mjs && prettier --write src/styles/fonts.css"
   },
   "dependencies": {
     "@fontsource/ibm-plex-sans-kr": "5.3.0",
